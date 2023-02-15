@@ -30,3 +30,19 @@ Today, I managed to coerce the calibration dataframes into wide format and calcu
 An important observation is that while some transmitters barely deviated from the thermocouple, others deviated significantly, sometimes up to several degrees. The calibration method, however performed very well at estimating the true temperature value. While group 3's calibration parameters had to be estimated from regression, I think I maximized the chance it was as close to the true values as possible. 
 
 Once I calibrated all the raw data, I trimmed the datasets to not include any data from dates ***less than or equal to*** the date of deployment OR ***greater than or equal to*** the date of retrieval. 
+
+# 2/15/2023
+Today, I wrote the calibrated master transmitter dataframe to the following file: Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv. 
+
+I have also created the R script entitled "arousal_classification.R". This script is meant to loop through all of the transmitter data and classify each datapoint as belonging to an arousal (1) or torpor bout (0). To do so, I first identified arousals in a broad-sweep using Reeder et al. 2012's definition. Under this definition, a datapoint is classified as an arousal if it falls within 10C of the logger's maximum value. I found that this indeed adequately identifies arousal events. However, in many cases, there is a "ramping up" or "cooling down" period on either side of the identified arousal event containing temperature data that falls outside of the 10C threshold but that is significantly warmer than the torpor bouts on either side of the arousal. Because I think it is inappropriate to allow these values to fall into the "torpor classification", I constructed a for-loop in this script to re-classify them as part of the arousal event. For those "ramping up" values that proceed the identified arousal, I classified them as part of the arousal if the temperature value at i-1 (i being the ramping up value) was at least 1C colder. Similarly, for the "cooling down" values following an arousal event, I classified them as part of the arousal if the temperature value at i+1 was at least 1C colder. I ran this loop twice, but the number of times can be extended. Running the loop twice extends the number of additional datapoints that can be incorporated into the arousal event by two on either side of the arousal. For example, if i was classified as an arousal under Reeder's definition, then both i-1 and i-2 can be classified as part of the arousal as long as they meet the conditions described above. 
+
+In coming days, my goal is to take this new arousal dataset and summarize it, calculating each of the following metrics: 
+a) total number of arousals
+b) length of each arousal
+c) total number of torpor bouts
+d) length of each torpor bout
+e) number of movements
+f) change in temperature following movement
+g) average temperature during each torpor bout
+h) min/max temperature during each torpor bout/arousal
+i) event number = order of the torpor/arousal in the sequence of bouts/arousals. 

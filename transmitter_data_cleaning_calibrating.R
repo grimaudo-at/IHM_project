@@ -283,23 +283,27 @@ master$datetime <- paste(master$date, master$time, sep=" ")
 master$datetime <- as.POSIXct(strptime(master$datetime, "%Y-%m-%d %H:%M:%S",tz='EST')) 
 #This column is necessary so that R can plot data over time on hourly scales. 
 
-p <- list()
-logg <- unique(master$uniq)
-for(i in 1:length(logg)){
-  p[[i]] <- list()
-  dat <- subset(master, uniq==logg[i])
-  p[[i]][[1]] <- ggplot(dat, aes(datetime,value_cal)) + 
-    geom_line(color="blue", size=0.5) + 
-    geom_line(aes(x=datetime, y=value), color="black", size=0.5, data=dat)+
-    scale_y_continuous(limits=c(-2,30))+
-    labs(x="Date", y=expression("Temperature " (degree*C)~" "), color="Legend")+
-    scale_color_manual(values=colors)+
-    ggtitle(paste(dat$uniq))+
-    theme(panel.background = element_blank(),
-          legend.position = "top",
-          axis.text = element_text(size=20, color='grey16'), 
-          axis.title = element_text(size=25, color="grey16"),
-          axis.ticks = element_line(size=0.8, color="grey57"),
-          panel.border = element_rect(colour = "grey57", fill=NA, size=0.8))
-}
-#This stores a separate ggplot for each transmitter in a list called 'p'
+#p <- list()
+#logg <- unique(master$uniq)
+#for(i in 1:length(logg)){
+  #p[[i]] <- list()
+  #dat <- subset(master, uniq==logg[i])
+  #p[[i]][[1]] <- ggplot(dat, aes(datetime,value_cal)) + 
+   # geom_line(color="blue", size=0.5) + 
+    #geom_line(aes(x=datetime, y=value), color="black", size=0.5, data=dat)+
+    #scale_y_continuous(limits=c(-2,30))+
+    #labs(x="Date", y=expression("Temperature " (degree*C)~" "), color="Legend")+
+    #scale_color_manual(values=colors)+
+    #ggtitle(paste(dat$uniq))+
+    #theme(panel.background = element_blank(),
+     #     legend.position = "top",
+      #    axis.text = element_text(size=20, color='grey16'), 
+       #   axis.title = element_text(size=25, color="grey16"),
+        #  axis.ticks = element_line(size=0.8, color="grey57"),
+         # panel.border = element_rect(colour = "grey57", fill=NA, size=0.8))
+#}
+#This stores a separate ggplot for each transmitter in a list called 'p'. Used for building .pdf of all data
+
+mastercsv <- select(master, site, trans_id, date, time, value_cal, serial_num, logger_model, )
+colnames(mastercsv) <- c("site","trans_id", "date","time","temp", "serial_num","logger_model")
+write.csv(mastercsv, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv",row.names = F)
