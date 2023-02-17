@@ -58,4 +58,3 @@ Talked with Kate today about constructing simulations to explore role of bat mov
 2) Similar to the first method, but r in the equation will be substituted by its derivation, the parameters for which were also calculated by Kate and Skylar's fitting. 
 
 3) Simulate pathogen load forward using the same equation as simulation 2, but iteratively fitting values of r as the simulation progresses. 
-
