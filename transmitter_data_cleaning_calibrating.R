@@ -306,4 +306,7 @@ master$datetime <- as.POSIXct(strptime(master$datetime, "%Y-%m-%d %H:%M:%S",tz='
 
 mastercsv <- select(master, site, trans_id, date, time, value_cal, serial_num, logger_model, )
 colnames(mastercsv) <- c("site","trans_id", "date","time","temp", "serial_num","logger_model")
-write.csv(mastercsv, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv",row.names = F)
+#write.csv(mastercsv, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv",row.names = F)
+#DO NOT WRITE THIS CSV UNLESS ABSOLUTELY CERTAIN YOU WANT TO DO SO. THE SCRIPT "arousal_classification.R" adds two important columns, "behavior" and
+#"event number" to this dataframe and then writes it as a .csv under the same name and location. Writing over this .csv in this script will force you
+#to re-run the arousal classification script to retrieve those values, which takes several hours to run the for loops. 

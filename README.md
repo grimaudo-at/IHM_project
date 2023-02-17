@@ -46,3 +46,16 @@ f) change in temperature following movement
 g) average temperature during each torpor bout
 h) min/max temperature during each torpor bout/arousal
 i) event number = order of the torpor/arousal in the sequence of bouts/arousals. 
+
+# 2/16/2023
+Today, I was again working in the "arousal_classification.R" script to identify all arousals and torpor bouts. After running the for-loop that does that (explained in previous entry), which takes about 1.5 hours to run over the whole dataset, I also constructed and ran a for-loop that identifies each torpor/arousal's "event number". The event number is each torpor bout or arousal's position in the sequence of torpor bouts/arousals, and it is how I am going to do much of the summarizing. Once I added these data to the dataframe, I re-wrote the Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv file. 
+
+# 2/17/2023
+Talked with Kate today about constructing simulations to explore role of bat movement in determining infection load over hibernation. In all three simulations, I will use a temperature response curve of the pathogen to simulate forward the early hibernation pathogen load on each bat, using its transmitter tempeature data. Simply, every load at time i will be a product of the load at time i-1 and r(temp[i-1]), r being the temperature-specific growth rate. Additionally, we will run this simulation on the temperature dataset collected from the site's psychrometer (which would be analagous to a bat that never moves) and on a dataset that assumes a constant average temperature over the course of hibernation. Comparing the simulated end-of-hibernation pathogen load values to our empirical data will elucidate which framework most closely predicts infection dynamics, with the hypothesized outcome that the simulation over bat movement data will fit best, indicating movement is important driver of infection severity. Comparing values of r over each simulation will further yield information on how bat movement specifically influences pathogen growth. There are three potential simulation approaches that I'll attempt in order:
+
+1) Simulate pathogen load forward deterministically by pulling known, calculated r values from the thermal performance curve that Kate and Skylar fit.
+
+2) Similar to the first method, but r in the equation will be substituted by its derivation, the parameters for which were also calculated by Kate and Skylar's fitting. 
+
+3) Simulate pathogen load forward using the same equation as simulation 2, but iteratively fitting values of r as the simulation progresses. 
+
