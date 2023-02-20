@@ -54,83 +54,59 @@ for(i in 2:nrow(master)) {if(master[i,2] == master[i-1,2]) {if(master[i,10] == m
 
 #write.csv(master, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv", row.names = F)
 
-p <- list()
-logg <- unique(master$trans_id)
-for(i in 1:length(logg)){
-p[[i]] <- list()
-dat <- subset(master, trans_id==logg[i])
-p[[i]][[1]] <- ggplot(dat, aes(datetime,temp, color=behavior)) + 
-geom_line(color="black")+
-geom_point()+
-scale_y_continuous(limits=c(-2,30))+
-labs(x="Date", y=expression("Temperature " (degree*C)~" "))+
-scale_color_manual(values=c("red","blue"))+
-ggtitle(paste(dat$trans_id))+
-theme(panel.background = element_blank(),
-     legend.position = "top",
-    axis.text = element_text(size=20, color='grey16'), 
-   axis.title = element_text(size=25, color="grey16"),
-  axis.ticks = element_line(size=0.8, color="grey57"),
- panel.border = element_rect(colour = "grey57", fill=NA, size=0.8))
-}
-#list of ggplots to plot for quality control. 
-
-
-
-#### Construcing arousal/torpor summary dataframe ####
+#### Summarizing event data ####
 
 tr.sum <- master %>%
   group_by(site, trans_id, behavior, event_num) %>%
-  summarise(start.datetime = min(datetime), end.datetime=max(datetime), mean.temp = mean(temp), min.temp = min(temp), max.temp = max(temp)) %>%
+  summarise(start.datetime = min(datetime), end.datetime=max(datetime), mean.temp = mean(temp), min.temp = min(temp), max.temp = max(temp), sd.temp = sd(temp)) %>%
   mutate(event.length = as.numeric(difftime(end.datetime, start.datetime, units="days"))) %>%
-  filter(trans_id != "104" & trans_id != "108")
-
-tr.sum$arousal <-NA
-tr.sum$arousal[tr.sum$behavior=="Arousal"]<-1
-
-tr.sum.freq <- tr.sum %>%
   group_by(trans_id) %>%
-  summarise(start.time = min(start.datetime), end.time = max(end.datetime)) %>%
-  mutate(sampling.duration = end.time - start.time)
-tr.sum.freq$sampling.duration <- as.numeric(tr.sum.freq$sampling.duration)
+  arrange(event_num, .by_group = T)
+#This table is a summary of each of each individual's arousal and torpor bouts. 
 
-poo <- tr.sum %>%
-  group_by(site, trans_id) %>%
-  summarise(n.ar = sum(arousal, na.rm=T)) %>%
-  filter(trans_id != "104" & trans_id != "108")
-poo$sampling.duration <- tr.sum.freq$sampling.duration[match(poo$trans_id, tr.sum.freq$trans_id)]
-poo$ar.freq <- poo$sampling.duration/poo$n.ar
+tr.sum$location <- NA
+tr.sum[1,12] <- 1
+tr.sum[1,12] <- 1
+tr.sum$sd.temp[is.na(tr.sum$sd.temp)]<-0
+#This column is going to keep track of how many different locations an individual has used and when. First value needs to be added to run loop
 
-tr.sum2<- tr.sum %>%
-  group_by(trans_id) %>%
-  filter(event_num != min(event_num) & event_num != max(event_num))
+for(i in 3:nrow(tr.sum)) {if(tr.sum[i,2] != tr.sum[i-1,2]) {tr.sum[i,12] <- 1}
+  else{if(tr.sum[i,3] == "Arousal") {tr.sum[i,12]<-NA}
+    else{if(tr.sum[i,7] >= (tr.sum[i-2,7]+tr.sum[i-2,10]) | tr.sum[i,7] <= (tr.sum[i-2,7] - tr.sum[i-2,10])) {tr.sum[i,12] <- tr.sum[i-2,12]+1}
+      else{tr.sum[i,12] <- tr.sum[i-2,12]}}}}
+#This loop identifies the locations in which all bouts of torpor occurred, if they were new from the previous torpor bout. If they weren't new 
+#locations, then they were assigned the same location value as the previous torpor bout. New locations were identified if the average temperature
+#during the associated torpor bout was outside of 1 standard deviation of the average temperature of the previous torpor bout. 
 
-p<-ggplot(aes(x=site, y=event.length), data=tr.sum2[tr.sum2$behavior=="Torpor",]) +
-  geom_boxplot()+
-  geom_jitter(aes(color=mean.temp), width=0.1)+
-  labs(x="Site",y="Torpor bout length (days)")+
-  scale_color_gradient(low="blue", high="red");p
+tr.sum$uniq <- paste(tr.sum$trans_id, tr.sum$event_num)
+master$uniq <- paste(master$trans_id, master$event_num)
+#Unique columns for matching in the location information
+master$location <- tr.sum$location[match(master$uniq, tr.sum$uniq)]
+#Bringin in location data to master df
+master$location2[master$location%%2 == 1]<-"a"
+master$location2[master$location%%2 != 1]<-"b"
+master$location2[is.na(master$location2)]<-"c"
+#The above is just meant for illustration purposes. It is an odd/even identifier used to color by to illustrate movements. 
 
-#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/torpor_length~site.PNG",p,scale=3,width=8,height=6 ,units="cm",dpi=600)
 
-p2<-ggplot(aes(x=site, y=n.ar), data=poo) +
-  geom_boxplot()+
-  geom_jitter(width=0.1)+
-  labs(x="Site", y="Number of arousals");p2
+p <- list()
+logg <- unique(master$trans_id)
+for(i in 1:length(logg)){
+  p[[i]] <- list()
+  dat <- subset(master, trans_id==logg[i])
+  p[[i]][[1]] <- ggplot(dat, aes(datetime,temp, color=location2)) + 
+    geom_line(color="black")+
+    geom_point(alpha=0.9)+
+    scale_y_continuous(limits=c(-2,30))+
+    labs(x="Date", y=expression("Temperature " (degree*C)~" "))+
+    scale_color_manual(values=c("a"="red","b"="blue","c"="black"))+
+    ggtitle(paste(dat$trans_id))+
+    theme(panel.background = element_blank(),
+          legend.position = "none",
+          axis.text = element_text(size=20, color='grey16'), 
+          axis.title = element_text(size=25, color="grey16"),
+          axis.ticks = element_line(size=0.8, color="grey57"),
+          panel.border = element_rect(colour = "grey57", fill=NA, size=0.8))
+}
+#list of ggplots to plot for quality control. 
 
-#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/n_arousals~site.PNG",p2,scale=3,width=8,height=6 ,units="cm",dpi=600)
-
-p3 <- ggplot(aes(x=site, y=ar.freq), data=poo) +
-  geom_boxplot()+
-  geom_jitter(width=0.1)+
-  labs(x="Site", y="Arousal frequency (days between arousals)");p3
-
-#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/arousal_freq~site.PNG",p3,scale=3,width=8,height=6 ,units="cm",dpi=600)
-
-p4<-ggplot(aes(x=start.datetime, y=event.length, color=mean.temp), data=tr.sum2[tr.sum2$behavior=="Torpor",]) +
-  geom_point()+
-  facet_wrap(~site)+
-  labs(x="Date", y="Torpor bout length (days)")+
-  scale_color_gradient(low="blue", high="red");p4
-
-#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/torpor_length~date*site.PNG",p4,scale=3,width=8,height=6 ,units="cm",dpi=600)
