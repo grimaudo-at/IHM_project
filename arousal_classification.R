@@ -56,24 +56,28 @@ for(i in 2:nrow(master)) {if(master[i,2] == master[i-1,2]) {if(master[i,10] == m
 
 #### Summarizing event data ####
 
+master <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv")
+master$datetime <- as.POSIXct(strptime(paste(master$date, master$time), "%Y-%m-%d %H:%M:%S",tz='EST'))
 tr.sum <- master %>%
   group_by(site, trans_id, behavior, event_num) %>%
-  summarise(start.datetime = min(datetime), end.datetime=max(datetime), mean.temp = mean(temp), min.temp = min(temp), max.temp = max(temp), sd.temp = sd(temp)) %>%
-  mutate(event.length = as.numeric(difftime(end.datetime, start.datetime, units="days"))) %>%
+  summarise(start.datetime = min(datetime), end.datetime=max(datetime), mean.temp = mean(temp), median.temp = median(temp), min.temp = min(temp), max.temp = max(temp), sd.temp = sd(temp)) %>%
+  mutate(event.length = as.numeric(difftime(end.datetime, start.datetime, units="days")), temp_range = max.temp - min.temp) %>%
   group_by(trans_id) %>%
   arrange(event_num, .by_group = T)
 #This table is a summary of each of each individual's arousal and torpor bouts. 
 
 tr.sum$location <- NA
-tr.sum[1,12] <- 1
-tr.sum[1,12] <- 1
+tr.sum[1,14] <- 1
+tr.sum[1,14] <- 1
 tr.sum$sd.temp[is.na(tr.sum$sd.temp)]<-0
 #This column is going to keep track of how many different locations an individual has used and when. First value needs to be added to run loop
 
-for(i in 3:nrow(tr.sum)) {if(tr.sum[i,2] != tr.sum[i-1,2]) {tr.sum[i,12] <- 1}
-  else{if(tr.sum[i,3] == "Arousal") {tr.sum[i,12]<-NA}
-    else{if(tr.sum[i,7] >= (tr.sum[i-2,7]+tr.sum[i-2,10]) | tr.sum[i,7] <= (tr.sum[i-2,7] - tr.sum[i-2,10])) {tr.sum[i,12] <- tr.sum[i-2,12]+1}
-      else{tr.sum[i,12] <- tr.sum[i-2,12]}}}}
+for(i in 3:nrow(tr.sum)) {if(tr.sum[i,2] != tr.sum[i-1,2]) {if(tr.sum[i,3] == "Torpor") {tr.sum[i,14] <- 1} else{tr.sum[i,14] <- NA}}
+  else{if(tr.sum[i,3] != "Torpor") {tr.sum[i,14] <- NA} 
+    else{if(tr.sum[i,2] != tr.sum[i-2,2]) {tr.sum[i,14] <- 1}
+      else{if(tr.sum[i,8] >= (tr.sum[i-2,8] + tr.sum[i-2,11])) {tr.sum[i,14] <- (tr.sum[i-2,14] + 1)}
+        else{if(tr.sum[i,8] <= (tr.sum[i-2,8] - tr.sum[i-2,11])) {tr.sum[i,14] <- (tr.sum[i-2,14]+1)}
+          else{tr.sum[i,14] <- tr.sum[i-2,14]}}}}}}
 #This loop identifies the locations in which all bouts of torpor occurred, if they were new from the previous torpor bout. If they weren't new 
 #locations, then they were assigned the same location value as the previous torpor bout. New locations were identified if the average temperature
 #during the associated torpor bout was outside of 1 standard deviation of the average temperature of the previous torpor bout. 
@@ -109,4 +113,6 @@ for(i in 1:length(logg)){
           panel.border = element_rect(colour = "grey57", fill=NA, size=0.8))
 }
 #list of ggplots to plot for quality control. 
+
+
 
