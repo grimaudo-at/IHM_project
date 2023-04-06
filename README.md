@@ -68,3 +68,6 @@ Generally this algorithm for identifying movements does not seem to work very we
 
 # 2/21/2023
 Today, I tried running the movement classification algorithm again, but this time using median instead of mean values during torpor bouts for identifying movements. Performed extremely similarly, maybe a little bit better, with still a ton of user correction necessary. I printed all of the new plots to: Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_arousal_classification_plots.pdf
+
+# 4/4/2023
+Today I re-named the raw, cleaned transmitter master file to "transmitter_raw_working.csv". I also created a new .csv file in the following pathway: "Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv". This .csv file contains the list of arousals and torpor bouts for each individual as well as summary data about those bouts, such as mean/min/max temperature, temperature range, and bout duration. This is the .csv file I am planning to use to make calculations and do analyses in this new R script: Dropbox/Grimaudo_WNS_Project/Rscripts/IHM_project/disease~behav_analysis.R. 
