@@ -80,7 +80,7 @@ mean.torpor.temps <- master %>%
 tr.sum <- master %>%
   group_by(site, trans_id, behavior, event_num) %>%
   summarise(start.datetime = min(datetime), end.datetime=max(datetime), mean.temp = mean(temp), median.temp = median(temp), min.temp = min(temp), max.temp = max(temp), sd.temp = sd(temp)) %>%
-  mutate(event.length = as.numeric(difftime(end.datetime, start.datetime, units="hours")), temp_range = max.temp - min.temp) %>%
+  mutate(event.length.days = as.numeric(difftime(end.datetime, start.datetime, units="days")), temp_range = max.temp - min.temp) %>%
   group_by(trans_id) %>%
   arrange(event_num, .by_group = T)
 #This table is a summary of each of each individual's arousal and torpor bouts. 

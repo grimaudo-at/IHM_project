@@ -71,3 +71,5 @@ Today, I tried running the movement classification algorithm again, but this tim
 
 # 4/4/2023
 Today I re-named the raw, cleaned transmitter master file to "transmitter_raw_working.csv". I also created a new .csv file in the following pathway: "Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv". This .csv file contains the list of arousals and torpor bouts for each individual as well as summary data about those bouts, such as mean/min/max temperature, temperature range, and bout duration. This is the .csv file I am planning to use to make calculations and do analyses in this new R script: Dropbox/Grimaudo_WNS_Project/Rscripts/IHM_project/disease~behav_analysis.R. 
+
+I started constructing a few of the independent variables of interest. 
