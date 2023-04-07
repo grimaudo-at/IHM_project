@@ -69,7 +69,22 @@ Generally this algorithm for identifying movements does not seem to work very we
 # 2/21/2023
 Today, I tried running the movement classification algorithm again, but this time using median instead of mean values during torpor bouts for identifying movements. Performed extremely similarly, maybe a little bit better, with still a ton of user correction necessary. I printed all of the new plots to: Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_arousal_classification_plots.pdf
 
-# 4/4/2023
+# 4/6/2023
 Today I re-named the raw, cleaned transmitter master file to "transmitter_raw_working.csv". I also created a new .csv file in the following pathway: "Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv". This .csv file contains the list of arousals and torpor bouts for each individual as well as summary data about those bouts, such as mean/min/max temperature, temperature range, and bout duration. This is the .csv file I am planning to use to make calculations and do analyses in this new R script: Dropbox/Grimaudo_WNS_Project/Rscripts/IHM_project/disease~behav_analysis.R. 
 
 I started constructing a few of the independent variables of interest. 
+
+# 4/7/2023
+I spent most of the day today calculating independent variables of interest in the disease~behav_analysis.R script. Below is a break-down of the variables I've constructed:
+
+**1) Arousal frequency:** simply the sampling duration divided by the number of arousal events, on the scale of days. The sampling duration had to be corrected for all individuals, however. Because most individuals had torpor bouts as their first, last, or first and last event, the length of these torpor bouts were artificially changed by handling. To take this into account, those torpor bouts were removed from the sampling duration calculation when they occurred. 
+
+**2) Mean torpor bout length:** very similar to arousal frequency, but does not have a 1:1 relationship. Also on the order of days. 
+
+**3) Mean torpor bout temperature:** the average temperature using all raw data collected by loggers during torpor bouts. 
+
+**4) Mean change in mean torpor bout temperature:** the average change in the average torpor bout temperature following arousals. Basically, I calculated the difference in the mean temperatures of two torpor bouts separated by an arousal and then found the average of those values for each bat. This second average was weighted by the length of the torpor bout, but I also calculated an unweighted analog.
+
+**5) Mean deviation in torpor bout temperature from first torpor bout:** the average difference between the average temperature of a torpor bout and the average temperature of that bat's first torpor bout. This metric is cool because it has "memory," basically measuring how the bat's roosting temperature has changed over time since its first torpor bout. Like the previous metric, I also created a weighted (by torpor bout length) and unweighted version. 
+
+Once I finished building these variables, I began writing code in the same R script to loop in disease data from the midwest_master.csv file. I didn't get very far before I identified a few inconsistencies with band #'s. Specifically, there were 6 occurrences where a bat had the same transmitter ID in early and late hibernation, but different band #'s. Five of the six appeared to be simple notation mistakes, but I can't figure out one from Elroy Sparta with transmitter ID 90. I sent this information to Kate and Kirsten so that we can determine a fix. 
