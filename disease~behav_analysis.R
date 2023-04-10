@@ -205,6 +205,7 @@ ind.summ$mean.temp.dev.first.torpor.unweighted <- mean.temp.dev.first.torpor.unw
 #### Matching in disease data ####
 
 dis.dat.master <- read.csv("/Users/alexg8/Dropbox/MIDWEST_WNS/DATA/midwest_master.csv")
+trans_meta<- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_metadata.csv")
 #this dataframe doesn't have any infection data. That will have to be incorporated later once it's available. 
 
 dis.dat.master$date <- as.Date(dis.dat.master$date, format="%m/%d/%y")
@@ -219,15 +220,76 @@ dis.early <- filter(dis.dat.master, season=="hiber_earl")
 dis.late <- filter(dis.dat.master, season=="hiber_late")
 #separating the master disease database by early and late hibernation. 
 
-poo<-select(dis.early, site, trans_id, date, band)
-colnames(poo) <- c("site", "trans_id", "date_early", "band_early")
-poo$date_late <- dis.late$date[match(poo$trans_id, dis.late$trans_id)]
-poo$band_late <- dis.late$band[match(poo$trans_id, dis.late$trans_id)]
-poo<-filter(poo, band_early != band_late)
+dis.early$trans_model <- trans_meta$model[match(dis.early$trans_id, trans_meta$id)]
+dis.early$trans_weight_g <- trans_meta$weight_g[match(dis.early$trans_id, trans_meta$id)]
+#Bringing in the transmitter model and weight metadata
+
+
+bad.bands<-select(dis.early, site, trans_id, date, band)
+colnames(bad.bands) <- c("site", "trans_id", "date_early", "band_early")
+bad.bands$date_late <- dis.late$date[match(bad.bands$trans_id, dis.late$trans_id)]
+bad.bands$band_late <- dis.late$band[match(bad.bands$trans_id, dis.late$trans_id)]
+bad.bands<-filter(bad.bands, band_early != band_late)
 #These are inconsistencies between early and late hibernation in the band # recorded for a bat with the same trans_id. 
 
-dis.df <- select(dis.early, trans_id, site, section, state, band, swab_id, sex, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2)
+dis.df <- select(dis.early, trans_id, trans_model, trans_weight_g, site, section, state, band, swab_id, sex, mass, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2)
 #This is going to be the dataframe with which I combine the ind.summ dataframe. 
 
-colnames(dis.df) <- c("trans_id", "site", "section_early", "state", "band", )
+colnames(dis.df) <- c("trans_id", "trans_model", "trans_weight_g", "site", "section_early", "state", "band", "swab_id_early", "sex", "mass_early","uv_orange_early", 
+                      "uv_right_early", "gd_wall_early","gd_wall2_early", "wing_score_early","wing_score2_early")
+#Re-naming columns so that their early disease information is identifiable.
 
+dis.df$mass_late <- dis.late$mass[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$swab_id_late <- dis.late$swab_id[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$uv_orange_late <- dis.late$uv_orange[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$uv_right_late <- dis.late$uv_right[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$gd_wall_late <- dis.late$gd_wall[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$gd_wall2_late <- dis.late$gd_wall2[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$wing_score_late <- dis.late$wing_score[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$wing_score2_late <- dis.late$wing_score2[match(dis.df$trans_id, dis.late$trans_id)]
+#Matching in the disease data matching on transmitter ID. 
+
+dis.df$sex_late <- dis.late$sex[match(dis.df$trans_id, dis.late$trans_id)]
+mal.sex <- filter(dis.df, sex != sex_late)
+#The sex of this bat miraculously changed over the course of hibernation. 
+
+#Constructing disease severity metrics of interest: mean early/late gd score, mean early/late wing score, mean early/late
+#UV score, changes in those metrics, and difference in mass. 
+
+dis.df$uv_orange_early<-as.numeric(dis.df$uv_orange_early)
+dis.df$uv_orange_late<-as.numeric(dis.df$uv_orange_late)
+dis.df$uv_right_early<-as.numeric(dis.df$uv_right_early)
+dis.df$uv_right_late<-as.numeric(dis.df$uv_right_late)
+dis.df$gd_wall_early <- as.numeric(dis.df$gd_wall_early)
+dis.df$gd_wall_late <- as.numeric(dis.df$gd_wall_late)
+dis.df$gd_wall2_early <- as.numeric(dis.df$gd_wall2_early)
+dis.df$gd_wall2_late <- as.numeric(dis.df$gd_wall2_late)
+dis.df$wing_score_early <- as.numeric(dis.df$wing_score_early)
+dis.df$wing_score_late <- as.numeric(dis.df$wing_score_late)
+dis.df$wing_score2_early <- as.numeric(dis.df$wing_score2_early)
+dis.df$wing_score2_late <- as.numeric(dis.df$wing_score2_late)
+#Converting all categorical score data into numerics for averaging. 
+
+dis.df$uv_score_mean_early <- (dis.df$uv_orange_early+dis.df$uv_right_early)/2
+#Mean early hibernation uv score
+dis.df$uv_score_mean_late <- (dis.df$uv_orange_late+dis.df$uv_right_late)/2
+#Mean late hibernation uv score
+dis.df$d_uv_score <- dis.df$uv_score_mean_late - dis.df$uv_score_mean_early
+#Change between early and late hibernation in mean uv score. 
+
+dis.df$gd_score_mean_early <- (dis.df$gd_wall_early + dis.df$gd_wall2_early)/2
+#Mean early hibernation gd score
+dis.df$gd_score_mean_late <- (dis.df$gd_wall_late + dis.df$gd_wall2_late)/2
+#Mean late hibernation gd score
+dis.df$d_gd_score <- dis.df$gd_score_mean_late - dis.df$gd_score_mean_early
+#Change between early and late hibernation in mean gd score. 
+
+dis.df$wing_score_mean_early <- (dis.df$wing_score_early + dis.df$wing_score2_early)/2
+#Mean early hibernation wing score
+dis.df$wing_score_mean_late <- (dis.df$wing_score_late + dis.df$wing_score2_late)/2
+#Mean late hibernation wing score
+dis.df$d_wing_score <- dis.df$wing_score_mean_late - dis.df$wing_score_mean_early
+#Change between early and late hibernation mean wings score. 
+
+dis.df$d_mass <- dis.df$mass_late - dis.df$mass_early
+#Change in mass over course of hibernation.
