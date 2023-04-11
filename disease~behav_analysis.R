@@ -1,4 +1,7 @@
 library(tidyverse)
+library(lme4)
+library(effects)
+library(emmeans)
 
 dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv")
 #This dataframe contains a list and summary of every individual's arousal and torpor events. 
@@ -194,7 +197,7 @@ mean.temp.dev.first.torpor.unweighted <- dat %>%
 
 ind.summ$mean.temp.dev.first.torpor.weighted <- NA
 ind.summ$mean.temp.dev.first.torpor.weighted <- mean.temp.dev.first.torpor.weighted$mean.temp.dev.first.torpor.weighted[match(ind.summ$trans_id, mean.temp.dev.first.torpor.weighted$trans_id)]
-ind.summ$mean.temp.dev.first.torpor.weighted <- NA
+ind.summ$mean.temp.dev.first.torpor.unweighted <- NA
 ind.summ$mean.temp.dev.first.torpor.unweighted <- mean.temp.dev.first.torpor.unweighted$mean.temp.dev.first.torpor.unweighted[match(ind.summ$trans_id, mean.temp.dev.first.torpor.unweighted$trans_id)]
 #Bringing the weighted and unweighted averages into the individual summary dataframe. 
 
@@ -231,65 +234,276 @@ bad.bands$date_late <- dis.late$date[match(bad.bands$trans_id, dis.late$trans_id
 bad.bands$band_late <- dis.late$band[match(bad.bands$trans_id, dis.late$trans_id)]
 bad.bands<-filter(bad.bands, band_early != band_late)
 #These are inconsistencies between early and late hibernation in the band # recorded for a bat with the same trans_id. 
+#The two bats in South Lake had lost their bands (but not their transmitters) over the course of winter, so their late hibernation band was the one we replaced it with. 
 
 dis.df <- select(dis.early, trans_id, trans_model, trans_weight_g, site, section, state, band, swab_id, sex, mass, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2)
 #This is going to be the dataframe with which I combine the ind.summ dataframe. 
 
-colnames(dis.df) <- c("trans_id", "trans_model", "trans_weight_g", "site", "section_early", "state", "band", "swab_id_early", "sex", "mass_early","uv_orange_early", 
-                      "uv_right_early", "gd_wall_early","gd_wall2_early", "wing_score_early","wing_score2_early")
+colnames(dis.df) <- c("trans_id", "trans.model", "trans.weight.g", "site", "section.early", "state", "band", "swab.id.early", "sex", "mass.early","uv.orange.early", 
+                      "uv.right.early", "gd.wall.early","gd.wall2.early", "wing.score.early","wing.score2.early")
 #Re-naming columns so that their early disease information is identifiable.
 
-dis.df$mass_late <- dis.late$mass[match(dis.df$trans_id, dis.late$trans_id)]
-dis.df$swab_id_late <- dis.late$swab_id[match(dis.df$trans_id, dis.late$trans_id)]
-dis.df$uv_orange_late <- dis.late$uv_orange[match(dis.df$trans_id, dis.late$trans_id)]
-dis.df$uv_right_late <- dis.late$uv_right[match(dis.df$trans_id, dis.late$trans_id)]
-dis.df$gd_wall_late <- dis.late$gd_wall[match(dis.df$trans_id, dis.late$trans_id)]
-dis.df$gd_wall2_late <- dis.late$gd_wall2[match(dis.df$trans_id, dis.late$trans_id)]
-dis.df$wing_score_late <- dis.late$wing_score[match(dis.df$trans_id, dis.late$trans_id)]
-dis.df$wing_score2_late <- dis.late$wing_score2[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$mass.late <- dis.late$mass[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$swab.id.late <- dis.late$swab_id[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$uv.orange.late <- dis.late$uv_orange[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$uv.right.late <- dis.late$uv_right[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$gd.wall.late <- dis.late$gd_wall[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$gd.wall2.late <- dis.late$gd_wall2[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$wing.score.late <- dis.late$wing_score[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$wing.score2.late <- dis.late$wing_score2[match(dis.df$trans_id, dis.late$trans_id)]
 #Matching in the disease data matching on transmitter ID. 
 
-dis.df$sex_late <- dis.late$sex[match(dis.df$trans_id, dis.late$trans_id)]
-mal.sex <- filter(dis.df, sex != sex_late)
+dis.df$sex.late <- dis.late$sex[match(dis.df$trans_id, dis.late$trans_id)]
+mal.sex <- filter(dis.df, sex != sex.late)
 #The sex of this bat miraculously changed over the course of hibernation. 
 
 #Constructing disease severity metrics of interest: mean early/late gd score, mean early/late wing score, mean early/late
 #UV score, changes in those metrics, and difference in mass. 
 
-dis.df$uv_orange_early<-as.numeric(dis.df$uv_orange_early)
-dis.df$uv_orange_late<-as.numeric(dis.df$uv_orange_late)
-dis.df$uv_right_early<-as.numeric(dis.df$uv_right_early)
-dis.df$uv_right_late<-as.numeric(dis.df$uv_right_late)
-dis.df$gd_wall_early <- as.numeric(dis.df$gd_wall_early)
-dis.df$gd_wall_late <- as.numeric(dis.df$gd_wall_late)
-dis.df$gd_wall2_early <- as.numeric(dis.df$gd_wall2_early)
-dis.df$gd_wall2_late <- as.numeric(dis.df$gd_wall2_late)
-dis.df$wing_score_early <- as.numeric(dis.df$wing_score_early)
-dis.df$wing_score_late <- as.numeric(dis.df$wing_score_late)
-dis.df$wing_score2_early <- as.numeric(dis.df$wing_score2_early)
-dis.df$wing_score2_late <- as.numeric(dis.df$wing_score2_late)
+dis.df$uv.orange.early<-as.numeric(dis.df$uv.orange.early)
+dis.df$uv.orange.late<-as.numeric(dis.df$uv.orange.late)
+dis.df$uv.right.early<-as.numeric(dis.df$uv.right.early)
+dis.df$uv.right.late<-as.numeric(dis.df$uv.right.late)
+dis.df$gd.wall.early <- as.numeric(dis.df$gd.wall.early)
+dis.df$gd.wall.late <- as.numeric(dis.df$gd.wall.late)
+dis.df$gd.wall2.early <- as.numeric(dis.df$gd.wall2.early)
+dis.df$gd.wall2.late <- as.numeric(dis.df$gd.wall2.late)
+dis.df$wing.score.early <- as.numeric(dis.df$wing.score.early)
+dis.df$wing.score.late <- as.numeric(dis.df$wing.score.late)
+dis.df$wing.score2.early <- as.numeric(dis.df$wing.score2.early)
+dis.df$wing.score2.late <- as.numeric(dis.df$wing.score2.late)
 #Converting all categorical score data into numerics for averaging. 
 
-dis.df$uv_score_mean_early <- (dis.df$uv_orange_early+dis.df$uv_right_early)/2
+dis.df$uv.score.mean.early <- (dis.df$uv.orange.early+dis.df$uv.right.early)/2
 #Mean early hibernation uv score
-dis.df$uv_score_mean_late <- (dis.df$uv_orange_late+dis.df$uv_right_late)/2
+dis.df$uv.score.mean.late <- (dis.df$uv.orange.late+dis.df$uv.right.late)/2
 #Mean late hibernation uv score
-dis.df$d_uv_score <- dis.df$uv_score_mean_late - dis.df$uv_score_mean_early
+dis.df$d.uv.score <- dis.df$uv.score.mean.late - dis.df$uv.score.mean.early
 #Change between early and late hibernation in mean uv score. 
 
-dis.df$gd_score_mean_early <- (dis.df$gd_wall_early + dis.df$gd_wall2_early)/2
+dis.df$gd.score.mean.early <- (dis.df$gd.wall.early + dis.df$gd.wall2.early)/2
 #Mean early hibernation gd score
-dis.df$gd_score_mean_late <- (dis.df$gd_wall_late + dis.df$gd_wall2_late)/2
+dis.df$gd.score.mean.late <- (dis.df$gd.wall.late + dis.df$gd.wall2.late)/2
 #Mean late hibernation gd score
-dis.df$d_gd_score <- dis.df$gd_score_mean_late - dis.df$gd_score_mean_early
+dis.df$d.gd.score <- dis.df$gd.score.mean.late - dis.df$gd.score.mean.early
 #Change between early and late hibernation in mean gd score. 
 
-dis.df$wing_score_mean_early <- (dis.df$wing_score_early + dis.df$wing_score2_early)/2
+dis.df$wing.score.mean.early <- (dis.df$wing.score.early + dis.df$wing.score2.early)/2
 #Mean early hibernation wing score
-dis.df$wing_score_mean_late <- (dis.df$wing_score_late + dis.df$wing_score2_late)/2
+dis.df$wing.score.mean.late <- (dis.df$wing.score.late + dis.df$wing.score2.late)/2
 #Mean late hibernation wing score
-dis.df$d_wing_score <- dis.df$wing_score_mean_late - dis.df$wing_score_mean_early
+dis.df$d.wing.score <- dis.df$wing.score.mean.late - dis.df$wing.score.mean.early
 #Change between early and late hibernation mean wings score. 
 
-dis.df$d_mass <- dis.df$mass_late - dis.df$mass_early
+dis.df$d.mass <- dis.df$mass.late - dis.df$mass.early
 #Change in mass over course of hibernation.
+
+## Can now match in all the transmitter summary data for each individual: 
+dis.df <- left_join(dis.df, ind.summ[,2:11], by="trans_id")
+#Merged. 
+
+#### Variation across sites in behavior metrics ####
+
+dis.df$site <- factor(dis.df$site, levels = c("SOUTH LAKE MINE","GRAPHITE MINE","CP TUNNEL", "BLACKBALL", "ZIMMERMAN", "MEAD MINE","ELROY SPARTA"))
+#Make sure site is a factor. I have ordered the levels of this factor from coldest mean torpor bout temp to warmest. 
+
+
+## Arousal frequency
+
+ar.freq.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(ar.freq.mean = mean(arousal.freq.days, na.rm=T), ar.freq.sd = sd(arousal.freq.days, na.rm=T)) %>%
+  mutate(hi.sd = ar.freq.mean + ar.freq.sd, lo.sd = ar.freq.mean - ar.freq.sd)
+#Summary table of arousal frequency data across sites. Mean and SD range. 
+
+ar.freq.site.p <- ggplot(aes(x=site, y=ar.freq.mean), data=ar.freq.summ) +
+  geom_jitter(aes(x=site, y=arousal.freq.days, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+  geom_point(color='Black', size=4) +
+  scale_color_gradient(low="Blue", high="Red"); ar.freq.site.p
+#Plotted
+
+
+
+## Mean torpor length
+
+mean.torpor.length.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.torpor.length.mean = mean(mean.torpor.length.days, na.rm=T), mean.torpor.length.sd = sd(mean.torpor.length.days, na.rm=T)) %>%
+  mutate(hi.sd = mean.torpor.length.mean + mean.torpor.length.sd, lo.sd = mean.torpor.length.mean - mean.torpor.length.sd)
+#Summary table of mean torpor bout length data across sites. Mean and SD range. 
+
+mean.torpor.length.site.p <- ggplot(aes(x=site, y=mean.torpor.length.mean), data=mean.torpor.length.summ) +
+  geom_jitter(aes(x=site, y=mean.torpor.length.days, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+  geom_point(color='Black', size=4) +
+  scale_color_gradient(low="Blue", high="Red"); mean.torpor.length.site.p
+#Plotted
+
+
+
+
+## Mean torpor temp
+
+mean.torpor.temp.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.torpor.temp.mean = mean(mean.torpor.temp, na.rm=T), mean.torpor.temp.sd = sd(mean.torpor.temp, na.rm=T)) %>%
+  mutate(hi.sd = mean.torpor.temp.mean + mean.torpor.temp.sd, lo.sd = mean.torpor.temp.mean - mean.torpor.temp.sd)
+#Summary table of mean torpor bout temperature data across sites. Mean and SD range. 
+
+mean.torpor.temp.site.p <- ggplot(aes(x=site, y=mean.torpor.temp.mean), data=mean.torpor.temp.summ) +
+  geom_jitter(aes(x=site, y=mean.torpor.temp, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+  geom_point(color='Black', size=4) +
+  scale_color_gradient(low="Blue", high="Red"); mean.torpor.temp.site.p
+#Plotted
+
+
+
+
+## Mean change in mean torpor bout temperature
+
+#Weighted first:
+mean.d.torpor.temp.w.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.d.torpor.temp.w.mean = mean(mean.d.torpor.temp.weighted, na.rm=T), mean.d.torpor.temp.w.sd = sd(mean.d.torpor.temp.weighted, na.rm=T)) %>%
+  mutate(hi.sd = mean.d.torpor.temp.w.mean + mean.d.torpor.temp.w.sd, lo.sd = mean.d.torpor.temp.w.mean - mean.d.torpor.temp.w.sd)
+#Summary table of change in torpor bout temperature data across sites. Mean and SD range. 
+
+mean.d.torpor.temp.w.site.p <- ggplot(aes(x=site, y=mean.d.torpor.temp.w.mean), data=mean.d.torpor.temp.w.summ) +
+  geom_jitter(aes(x=site, y=mean.d.torpor.temp.weighted, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+  geom_point(color='Black', size=4) +
+  scale_color_gradient(low="Blue", high="Red"); mean.d.torpor.temp.w.site.p
+#Plotted
+
+#Now unweighted:
+mean.d.torpor.temp.uw.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.d.torpor.temp.uw.mean = mean(mean.d.torpor.temp.unweighted, na.rm=T), mean.d.torpor.temp.uw.sd = sd(mean.d.torpor.temp.unweighted, na.rm=T)) %>%
+  mutate(hi.sd = mean.d.torpor.temp.uw.mean + mean.d.torpor.temp.uw.sd, lo.sd = mean.d.torpor.temp.uw.mean - mean.d.torpor.temp.uw.sd)
+#Summary table of change in torpor bout temperature data across sites. Mean and SD range. 
+
+mean.d.torpor.temp.uw.site.p <- ggplot(aes(x=site, y=mean.d.torpor.temp.uw.mean), data=mean.d.torpor.temp.uw.summ) +
+  geom_jitter(aes(x=site, y=mean.d.torpor.temp.unweighted, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+  geom_point(color='Black', size=4) +
+  scale_color_gradient(low="Blue", high="Red"); mean.d.torpor.temp.uw.site.p
+#Plotted
+
+
+
+
+
+
+## Mean deviation in mean torpor bout temperature from first torpor bout
+
+#Weighted first:
+mean.temp.dev.w.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.temp.dev.w.mean = mean(mean.temp.dev.first.torpor.weighted, na.rm=T), mean.temp.dev.w.sd = sd(mean.temp.dev.first.torpor.weighted, na.rm=T)) %>%
+  mutate(hi.sd = mean.temp.dev.w.mean + mean.temp.dev.w.sd, lo.sd = mean.temp.dev.w.mean - mean.temp.dev.w.sd)
+#Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
+
+mean.temp.dev.w.site.p <- ggplot(aes(x=site, y=mean.temp.dev.w.mean), data=mean.temp.dev.w.summ) +
+  geom_jitter(aes(x=site, y=mean.temp.dev.first.torpor.weighted, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+  geom_point(color='Black', size=4) +
+  scale_color_gradient(low="Blue", high="Red"); mean.temp.dev.w.site.p
+#Plotted
+
+#Now unweighted:
+mean.temp.dev.uw.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.temp.dev.uw.mean = mean(mean.temp.dev.first.torpor.unweighted, na.rm=T), mean.temp.dev.uw.sd = sd(mean.temp.dev.first.torpor.unweighted, na.rm=T)) %>%
+  mutate(hi.sd = mean.temp.dev.uw.mean + mean.temp.dev.uw.sd, lo.sd = mean.temp.dev.uw.mean - mean.temp.dev.uw.sd)
+#Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
+
+mean.temp.dev.uw.site.p <- ggplot(aes(x=site, y=mean.temp.dev.uw.mean), data=mean.temp.dev.uw.summ) +
+  geom_jitter(aes(x=site, y=mean.temp.dev.first.torpor.unweighted, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+  geom_point(color='Black', size=4) +
+  scale_color_gradient(low="Blue", high="Red"); mean.temp.dev.uw.site.p
+#Plotted
+
+
+
+#### Variation across sites in disease metrics ####
+
+
+## Change in UV score:
+
+d.uv.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(d.uv.mean = mean(d.uv.score, na.rm=T), d.uv.sd = sd(d.uv.score, na.rm=T)) %>%
+  mutate(hi = d.uv.mean + d.uv.sd, lo = d.uv.mean - d.uv.sd)
+#Dataframe with the mean +/- standard deviation of the change in UV score from early to late hibernation
+
+d.uv.site.p <- ggplot(aes(x=site, y=d.uv.mean), data=d.uv.summ) +
+  geom_jitter(aes(x=site, y=d.uv.score, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
+  geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
+  geom_point(size=4, color="Blue")+
+  scale_color_gradient(low="Blue", high="Red"); d.uv.site.p
+#Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
+
+
+
+## Change in pd score
+
+d.gd.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(d.gd.mean = mean(d.gd.score, na.rm=T), d.gd.sd = sd(d.gd.score, na.rm=T)) %>%
+  mutate(hi = d.gd.mean + d.gd.sd, lo = d.gd.mean - d.gd.sd)
+#Dataframe with the mean +/- standard deviation of the change in gd score from early to late hibernation
+
+d.gd.site.p <- ggplot(aes(x=site, y=d.gd.mean), data=d.gd.summ) +
+  geom_jitter(aes(x=site, y=d.gd.score, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
+  geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
+  geom_point(size=4, color="Blue")+
+  scale_color_gradient(low="Blue", high="Red"); d.gd.site.p
+#Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
+
+
+
+
+## Change in wing score
+
+d.wing.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(d.wing.score.mean = mean(d.wing.score, na.rm=T), d.wing.score.sd = sd(d.wing.score, na.rm=T)) %>%
+  mutate(hi = d.wing.score.mean + d.wing.score.sd, lo = d.wing.score.mean - d.wing.score.sd)
+#Dataframe with the mean +/- standard deviation of the change in wing score from early to late hibernation
+
+d.wing.score.site.p <- ggplot(aes(x=site, y=d.wing.score.mean), data=d.wing.summ) +
+  geom_jitter(aes(x=site, y=d.wing.score, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
+  geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
+  geom_point(size=4, color="Blue")+
+  scale_color_gradient(low="Blue", high="Red"); d.wing.score.site.p
+#Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
+
+
+
+
+## Change in mass
+
+d.mass.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(d.mass.mean = mean(d.mass, na.rm=T), d.mass.sd = sd(d.mass, na.rm=T)) %>%
+  mutate(hi = d.mass.mean + d.mass.sd, lo = d.mass.mean - d.mass.sd)
+#Dataframe with the mean +/- standard deviation of the change in mass from early to late hibernation
+
+d.mass.site.p <- ggplot(aes(x=site, y=d.mass.mean), data=d.mass.summ) +
+  geom_jitter(aes(x=site, y=d.mass, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
+  geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
+  geom_point(size=4, color="Blue")+
+  scale_color_gradient(low="Blue", high="Red"); d.mass.site.p
+#Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
+
+
+
+#### Disease ~ arousal frequency ####
+
+
+#### Disease ~ mean torpor bout temp ####
+#### Disease ~ mean change in torpor bout temp ####
+#### Disease ~ mean deviation from temp of first torpor bout ####

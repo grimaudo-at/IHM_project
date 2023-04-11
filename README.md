@@ -91,3 +91,6 @@ Once I finished building these variables, I began writing code in the same R scr
 
 # 4/10/2023
 Today I discovered that one transmitter bat had its sex inexplicable change between early and late hibernation. It is transmitter ID 88 from Elroy Sparta. Would probably need to exclude this bat from any sex-based analyses. Additionally, I constructed some disease severity metrics of interest, including change in average wing/uv/gd score and change in mass. Next step is to match in the independent variables from the transmitter data and we'll have a working dataset (minus the pathogen load data).
+
+# 4/11/2023
+Finished constructing a combined disease and behavioral dataframe in the disease~behav_analysis.R script. I then made plots of the raw independent and dependent variables across sites. Through this process, I discovered that none of the mass data for CP Tunnel or Graphite bats was entered for that winter year, so I need to go back and enter that data before proceeding with that analysis. 
