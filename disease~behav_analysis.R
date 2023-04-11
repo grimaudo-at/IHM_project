@@ -500,7 +500,6 @@ d.mass.site.p <- ggplot(aes(x=site, y=d.mass.mean), data=d.mass.summ) +
 #Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
 
 
-
 #### Disease ~ arousal frequency ####
 
 
