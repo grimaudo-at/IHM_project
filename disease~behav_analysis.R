@@ -2,6 +2,8 @@ library(tidyverse)
 library(lme4)
 library(effects)
 library(emmeans)
+library(lmerTest)
+library(ggExtra)
 
 dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv")
 #This dataframe contains a list and summary of every individual's arousal and torpor events. 
@@ -316,11 +318,19 @@ ar.freq.summ <- dis.df %>%
   mutate(hi.sd = ar.freq.mean + ar.freq.sd, lo.sd = ar.freq.mean - ar.freq.sd)
 #Summary table of arousal frequency data across sites. Mean and SD range. 
 
-ar.freq.site.p <- ggplot(aes(x=site, y=ar.freq.mean), data=ar.freq.summ) +
+ar.freq.site.p <- ggMarginal((ggplot(aes(x=site, y=ar.freq.mean), data=ar.freq.summ) +
   geom_jitter(aes(x=site, y=arousal.freq.days, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
-  geom_point(color='Black', size=4) +
-  scale_color_gradient(low="Blue", high="Red"); ar.freq.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y="Arousal Frequency (days)") +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top")), type="histogram", fill="darkgray", bins=15); ar.freq.site.p
 #Plotted
 
 
@@ -333,11 +343,20 @@ mean.torpor.length.summ <- dis.df %>%
   mutate(hi.sd = mean.torpor.length.mean + mean.torpor.length.sd, lo.sd = mean.torpor.length.mean - mean.torpor.length.sd)
 #Summary table of mean torpor bout length data across sites. Mean and SD range. 
 
-mean.torpor.length.site.p <- ggplot(aes(x=site, y=mean.torpor.length.mean), data=mean.torpor.length.summ) +
+mean.torpor.length.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.torpor.length.mean), data=mean.torpor.length.summ) +
   geom_jitter(aes(x=site, y=mean.torpor.length.days, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
-  geom_point(color='Black', size=4) +
-  scale_color_gradient(low="Blue", high="Red"); mean.torpor.length.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y="Mean Torpor Bout Length (days)") +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=15); mean.torpor.length.site.p
 #Plotted
 
 
@@ -351,11 +370,20 @@ mean.torpor.temp.summ <- dis.df %>%
   mutate(hi.sd = mean.torpor.temp.mean + mean.torpor.temp.sd, lo.sd = mean.torpor.temp.mean - mean.torpor.temp.sd)
 #Summary table of mean torpor bout temperature data across sites. Mean and SD range. 
 
-mean.torpor.temp.site.p <- ggplot(aes(x=site, y=mean.torpor.temp.mean), data=mean.torpor.temp.summ) +
+mean.torpor.temp.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.torpor.temp.mean), data=mean.torpor.temp.summ) +
   geom_jitter(aes(x=site, y=mean.torpor.temp, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
-  geom_point(color='Black', size=4) +
-  scale_color_gradient(low="Blue", high="Red"); mean.torpor.temp.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y="Mean Torpor Bout Temperature (Celsius)") +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=15);mean.torpor.temp.site.p
 #Plotted
 
 
@@ -370,11 +398,20 @@ mean.d.torpor.temp.w.summ <- dis.df %>%
   mutate(hi.sd = mean.d.torpor.temp.w.mean + mean.d.torpor.temp.w.sd, lo.sd = mean.d.torpor.temp.w.mean - mean.d.torpor.temp.w.sd)
 #Summary table of change in torpor bout temperature data across sites. Mean and SD range. 
 
-mean.d.torpor.temp.w.site.p <- ggplot(aes(x=site, y=mean.d.torpor.temp.w.mean), data=mean.d.torpor.temp.w.summ) +
+mean.d.torpor.temp.w.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.d.torpor.temp.w.mean), data=mean.d.torpor.temp.w.summ) +
   geom_jitter(aes(x=site, y=mean.d.torpor.temp.weighted, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
-  geom_point(color='Black', size=4) +
-  scale_color_gradient(low="Blue", high="Red"); mean.d.torpor.temp.w.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y=expression(paste("Mean Change in Torpor Bout \n Temperature Following Arousal (Weighted)"))) +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=15); mean.d.torpor.temp.w.site.p
 #Plotted
 
 #Now unweighted:
@@ -384,11 +421,21 @@ mean.d.torpor.temp.uw.summ <- dis.df %>%
   mutate(hi.sd = mean.d.torpor.temp.uw.mean + mean.d.torpor.temp.uw.sd, lo.sd = mean.d.torpor.temp.uw.mean - mean.d.torpor.temp.uw.sd)
 #Summary table of change in torpor bout temperature data across sites. Mean and SD range. 
 
-mean.d.torpor.temp.uw.site.p <- ggplot(aes(x=site, y=mean.d.torpor.temp.uw.mean), data=mean.d.torpor.temp.uw.summ) +
+mean.d.torpor.temp.uw.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.d.torpor.temp.uw.mean), data=mean.d.torpor.temp.uw.summ) +
   geom_jitter(aes(x=site, y=mean.d.torpor.temp.unweighted, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
-  geom_point(color='Black', size=4) +
-  scale_color_gradient(low="Blue", high="Red"); mean.d.torpor.temp.uw.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y=expression(paste("Mean Change in Torpor Bout \n Temperature Following Arousal (Unweighted)"))) +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=15); mean.d.torpor.temp.uw.site.p
 #Plotted
 
 
@@ -405,11 +452,21 @@ mean.temp.dev.w.summ <- dis.df %>%
   mutate(hi.sd = mean.temp.dev.w.mean + mean.temp.dev.w.sd, lo.sd = mean.temp.dev.w.mean - mean.temp.dev.w.sd)
 #Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
 
-mean.temp.dev.w.site.p <- ggplot(aes(x=site, y=mean.temp.dev.w.mean), data=mean.temp.dev.w.summ) +
+mean.temp.dev.w.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.w.mean), data=mean.temp.dev.w.summ) +
   geom_jitter(aes(x=site, y=mean.temp.dev.first.torpor.weighted, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
-  geom_point(color='Black', size=4) +
-  scale_color_gradient(low="Blue", high="Red"); mean.temp.dev.w.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y=expression(paste("Mean Temp Deviation from \n First Arousal Bout (Weighted)"))) +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.w.site.p
 #Plotted
 
 #Now unweighted:
@@ -419,11 +476,21 @@ mean.temp.dev.uw.summ <- dis.df %>%
   mutate(hi.sd = mean.temp.dev.uw.mean + mean.temp.dev.uw.sd, lo.sd = mean.temp.dev.uw.mean - mean.temp.dev.uw.sd)
 #Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
 
-mean.temp.dev.uw.site.p <- ggplot(aes(x=site, y=mean.temp.dev.uw.mean), data=mean.temp.dev.uw.summ) +
+mean.temp.dev.uw.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.uw.mean), data=mean.temp.dev.uw.summ) +
   geom_jitter(aes(x=site, y=mean.temp.dev.first.torpor.unweighted, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
-  geom_point(color='Black', size=4) +
-  scale_color_gradient(low="Blue", high="Red"); mean.temp.dev.uw.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y=expression(paste("Mean Temp Deviation from \n First Arousal Bout (Unweighted)"))) +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.uw.site.p
 #Plotted
 
 
@@ -439,11 +506,20 @@ d.uv.summ <- dis.df %>%
   mutate(hi = d.uv.mean + d.uv.sd, lo = d.uv.mean - d.uv.sd)
 #Dataframe with the mean +/- standard deviation of the change in UV score from early to late hibernation
 
-d.uv.site.p <- ggplot(aes(x=site, y=d.uv.mean), data=d.uv.summ) +
+d.uv.site.p <- ggMarginal((ggplot(aes(x=site, y=d.uv.mean), data=d.uv.summ) +
   geom_jitter(aes(x=site, y=d.uv.score, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
   geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
-  geom_point(size=4, color="Blue")+
-  scale_color_gradient(low="Blue", high="Red"); d.uv.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y="Change in Mean UV Score") +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=8); d.uv.site.p
 #Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
 
 
@@ -456,11 +532,20 @@ d.gd.summ <- dis.df %>%
   mutate(hi = d.gd.mean + d.gd.sd, lo = d.gd.mean - d.gd.sd)
 #Dataframe with the mean +/- standard deviation of the change in gd score from early to late hibernation
 
-d.gd.site.p <- ggplot(aes(x=site, y=d.gd.mean), data=d.gd.summ) +
+d.gd.site.p <- ggMarginal((ggplot(aes(x=site, y=d.gd.mean), data=d.gd.summ) +
   geom_jitter(aes(x=site, y=d.gd.score, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
   geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
-  geom_point(size=4, color="Blue")+
-  scale_color_gradient(low="Blue", high="Red"); d.gd.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y="Change in Mean Pd Score") +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=8); d.gd.site.p
 #Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
 
 
@@ -474,11 +559,20 @@ d.wing.summ <- dis.df %>%
   mutate(hi = d.wing.score.mean + d.wing.score.sd, lo = d.wing.score.mean - d.wing.score.sd)
 #Dataframe with the mean +/- standard deviation of the change in wing score from early to late hibernation
 
-d.wing.score.site.p <- ggplot(aes(x=site, y=d.wing.score.mean), data=d.wing.summ) +
+d.wing.score.site.p <- ggMarginal((ggplot(aes(x=site, y=d.wing.score.mean), data=d.wing.summ) +
   geom_jitter(aes(x=site, y=d.wing.score, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
   geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
-  geom_point(size=4, color="Blue")+
-  scale_color_gradient(low="Blue", high="Red"); d.wing.score.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y="Change in Mean Wing Score") +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=8); d.wing.score.site.p
 #Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
 
 
@@ -492,15 +586,58 @@ d.mass.summ <- dis.df %>%
   mutate(hi = d.mass.mean + d.mass.sd, lo = d.mass.mean - d.mass.sd)
 #Dataframe with the mean +/- standard deviation of the change in mass from early to late hibernation
 
-d.mass.site.p <- ggplot(aes(x=site, y=d.mass.mean), data=d.mass.summ) +
+d.mass.site.p <- ggMarginal((ggplot(aes(x=site, y=d.mass.mean), data=d.mass.summ) +
   geom_jitter(aes(x=site, y=d.mass, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
   geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
-  geom_point(size=4, color="Blue")+
-  scale_color_gradient(low="Blue", high="Red"); d.mass.site.p
+  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  labs(x=NULL, y="Change in Mass (Grams") +
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=15),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top"
+  )), type="histogram", fill="darkgray", bins=15); d.mass.site.p
 #Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
 
 
-#### Disease ~ arousal frequency ####
+#### Behavior ~ Temperature ####
+
+## Arousal frequency: 
+
+m.arousal.freq.temp <- glmer(arousal.freq.days ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df); summary(m.arousal.freq.temp, dispersion=1)
+#This needs to be modeled as an exponential distribution because it is time between events. Dispersion=1 should make it exponential distribution. 
+plot(dis.df$arousal.freq.days ~ dis.df$mean.torpor.temp)
+#Doesn't seem like there's any relationship. 
+
+
+## Mean torpor bout length: 
+
+m.torpor.length.temp <- glmer(mean.torpor.length.days ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df); summary(m.torpor.length.temp, dispersion=1)
+#This needs to be modeled as an exponential distribution because it is time between events. Dispersion=1 should make it exponential distribution. 
+plot(dis.df$mean.torpor.length.days ~ dis.df$mean.torpor.temp)
+#Doesn't seem like there's any relationship. 
+
+
+## Mean change in temperature bout temperature following arousal 
+
+m.d.torpor.temp.m <- lmer(mean.d.torpor.temp.unweighted ~ mean.torpor.temp + (1|site), data=dis.df); summary(m.d.torpor.temp.m)
+#this is not a good model. Violates assumptions of normality. 
+#Can change between weighted and unweighted. 
+plot(dis.df$mean.d.torpor.temp.unweighted ~ dis.df$mean.torpor.temp)
+
+
+## Mean deviation in mean torpor bout temperature from mean of first torpor bout temperature 
+
+m.dev.first.torpor <- lmer(mean.temp.dev.first.torpor.weighted ~ mean.torpor.temp + (1|site), data=dis.df); summary(m.dev.first.torpor)
+#While this model structure is not great (violates assumptions of normality), this does suggest a positive association between mean temperature and average deviations. 
+#Can change between weighted and unweighted. 
+
+plot(dis.df$mean.temp.dev.first.torpor.weighted ~ dis.df$mean.torpor.temp)+
+  abline(a=-3.656, b=0.324)
+#raw data plotted with model estimate. 
 
 
 #### Disease ~ mean torpor bout temp ####
