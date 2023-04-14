@@ -4,6 +4,7 @@ library(effects)
 library(emmeans)
 library(lmerTest)
 library(ggExtra)
+library(glmmTMB)
 
 dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv")
 #This dataframe contains a list and summary of every individual's arousal and torpor events. 
@@ -11,6 +12,10 @@ dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/aro
 dat$start.datetime <- as.POSIXct(strptime(dat$start.datetime, "%Y-%m-%d %H:%M:%S",tz='EST'))
 dat$end.datetime <- as.POSIXct(strptime(dat$end.datetime, "%Y-%m-%d %H:%M:%S",tz='EST'))
 #Formatting date correctly
+
+dat$event.length.days[dat$event.length.days == 0] <- NA
+#There are several instances where there is an extremely short bout of "torpor", for less that the sampling interval of the logger.
+#These need to be NA when calculating change in torpor bout temperature independent variables
 
 #### Building independent variables of interest #####
 
@@ -147,7 +152,8 @@ dat$d.mean.torpor.temp <- NA
 for(i in 2:nrow(dat)) {if(dat[i,3] == "Arousal") {dat[i,15] <- NA}
   else{if(dat[i,2] != dat[i-1,2]) {dat[i,15] <- NA}
     else{if(dat[i,2] != dat[i-2,2]) {dat[i,15] <- NA}
-      else{dat[i,15] <- dat[i,7] - dat[i-2,7]}
+      else{if(is.na(dat[i-2,12])=="TRUE") {dat[i,15] <- dat[i,7] - dat[i-4,7]}
+        else{dat[i,15] <- dat[i,7] - dat[i-2,7]}}
       }
     }
   }
@@ -155,9 +161,11 @@ for(i in 2:nrow(dat)) {if(dat[i,3] == "Arousal") {dat[i,15] <- NA}
 #value is given to the first torpor bout. 
 
 mean.d.torpor.temps.weighted <- dat %>%
+  filter(event.length.days > 0) %>%
   group_by(trans_id) %>%
   summarise(mean.d.torpor.temps.weighted = weighted.mean(x=d.mean.torpor.temp, w=event.length.days, na.rm=T))
 #This dataframe contains the weighted change in torpor temps for each bat. 
+
 
 mean.d.torpor.temps.unweighted <- dat %>%
   group_by(trans_id) %>%
@@ -167,6 +175,9 @@ mean.d.torpor.temps.unweighted <- dat %>%
 ind.summ$mean.d.torpor.temp.weighted <- mean.d.torpor.temps.weighted$mean.d.torpor.temps.weighted[match(ind.summ$trans_id, mean.d.torpor.temps.weighted$trans_id)]
 ind.summ$mean.d.torpor.temp.unweighted <- mean.d.torpor.temps.unweighted$mean.d.torpor.temps.unweighted[match(ind.summ$trans_id, mean.d.torpor.temps.unweighted$trans_id)]
 #Looping this data into the individual summary dataframe. 
+
+
+
 
 #Now constructing the deviations from first torpor temp metric:
 
@@ -189,6 +200,7 @@ dat$temp.dev.first.torpor[dat$temp.dev.first.torpor==0] <- NA
 
 mean.temp.dev.first.torpor.weighted <- dat %>%
   group_by(trans_id) %>%
+  filter(!is.na(event.length.days)) %>%
   summarise(mean.temp.dev.first.torpor.weighted = weighted.mean(x=temp.dev.first.torpor, w=event.length.days, na.rm=T))
 #This dataframe contains the weighted average (again weighted by torpor bout length) of the deviations of each torpor
 #bout's mean temperature from that of the first torpor bout. 
@@ -300,6 +312,11 @@ dis.df$d.wing.score <- dis.df$wing.score.mean.late - dis.df$wing.score.mean.earl
 dis.df$d.mass <- dis.df$mass.late - dis.df$mass.early
 #Change in mass over course of hibernation.
 
+dis.df$sampling.duration.days <- ind.summ$sampling.duration.days[match(dis.df$trans_id, ind.summ$trans_id)]
+dis.df$d.mass.daily <- dis.df$d.mass/dis.df$sampling.duration.days
+#This is a measure of weight change that corrects for differences in the sampling interval, since bats from all sites were not sampled at the same time.
+#it is a "daily weight loss" metric. 
+
 ## Can now match in all the transmitter summary data for each individual: 
 dis.df <- left_join(dis.df, ind.summ[,2:11], by="trans_id")
 #Merged. 
@@ -376,6 +393,7 @@ mean.torpor.temp.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.torpor.temp.mea
   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
   labs(x=NULL, y="Mean Torpor Bout Temperature (Celsius)") +
+    scale_y_continuous(breaks=seq(1,9,1), labels=c("1","2","3","4","5","6","7","8","9"))+
   theme(
     axis.text.y = element_text(size=13),
     axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
@@ -403,7 +421,7 @@ mean.d.torpor.temp.w.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.d.torpor.te
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
-  labs(x=NULL, y=expression(paste("Mean Change in Torpor Bout \n Temperature Following Arousal (Weighted)"))) +
+  labs(x=NULL, y="Mean Change in Torpor Bout \n Temperature Following Arousal (Weighted)") +
   theme(
     axis.text.y = element_text(size=13),
     axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
@@ -426,7 +444,7 @@ mean.d.torpor.temp.uw.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.d.torpor.t
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
-  labs(x=NULL, y=expression(paste("Mean Change in Torpor Bout \n Temperature Following Arousal (Unweighted)"))) +
+  labs(x=NULL, y="Mean Change in Torpor Bout \n Temperature Following Arousal (Unweighted)") +
   theme(
     axis.text.y = element_text(size=13),
     axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
@@ -457,7 +475,7 @@ mean.temp.dev.w.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.w.mean)
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
-  labs(x=NULL, y=expression(paste("Mean Temp Deviation from \n First Arousal Bout (Weighted)"))) +
+  labs(x=NULL, y="Mean Temp Deviation from \n First Arousal Bout (Weighted)") +
   theme(
     axis.text.y = element_text(size=13),
     axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
@@ -481,7 +499,7 @@ mean.temp.dev.uw.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.uw.mea
   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
-  labs(x=NULL, y=expression(paste("Mean Temp Deviation from \n First Arousal Bout (Unweighted)"))) +
+  labs(x=NULL, y="Mean Temp Deviation from \n First Arousal Bout (Unweighted)") +
   theme(
     axis.text.y = element_text(size=13),
     axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
@@ -603,11 +621,111 @@ d.mass.site.p <- ggMarginal((ggplot(aes(x=site, y=d.mass.mean), data=d.mass.summ
 #Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
 
 
+
+## Daily change in mass 
+
+d.mass.daily.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(d.mass.daily.mean = mean(d.mass.daily, na.rm=T), d.mass.daily.sd = sd(d.mass.daily, na.rm=T)) %>%
+  mutate(hi = d.mass.daily.mean + d.mass.daily.sd, lo = d.mass.daily.mean - d.mass.daily.sd)
+#Dataframe with the mean +/- standard deviation of the daily change in mass from early to late hibernation
+
+d.mass.daily.site.p <- ggMarginal((ggplot(aes(x=site, y=d.mass.daily.mean), data=d.mass.daily.summ) +
+                               geom_jitter(aes(x=site, y=d.mass.daily, color=mean.torpor.temp), size=2, width=0.2, height=0.01, data=dis.df) +
+                               geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
+                               geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+                               scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+                               labs(x=NULL, y="Daily Change in Mass (Grams)") +
+                               theme(
+                                 axis.text.y = element_text(size=13),
+                                 axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+                                 axis.title = element_text(size=15),
+                                 legend.title = element_text(size=13),
+                                 legend.text = element_text(size=13),
+                                 legend.position = "top"
+                               )), type="histogram", fill="darkgray", bins=15); d.mass.daily.site.p
+#Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
+
+
+
+#### Other data summaries ####
+
+#What was the breakdown of sites by sex? 
+sex.summ <- dis.df %>%
+  mutate(c=1) %>%
+  filter(!is.na(arousal.freq.days)) %>%
+  group_by(site, sex) %>%
+  summarise(num.ind = sum(c))
+#Always more males. Blackball and Zimmerman only had 1 female with a working transmitter each. 
+
+
+
+
+
+
+
+# How much spatial variation exists in each site, according to point temperatures in late and early hibernation? 
+
+dis.dat.master <- read.csv("/Users/alexg8/Dropbox/MIDWEST_WNS/DATA/midwest_master.csv")
+dis.dat.master$date <- as.Date(dis.dat.master$date, format="%m/%d/%y")
+#Fixing date column.
+
+dis.dat.master <- dis.dat.master %>%
+  filter((swab_type=="BAT" | swab_type=="FAR") & date>"2021-10-01" & date<"2022-05-01") %>%
+  filter(site=="SOUTH LAKE MINE"|site=='MEAD MINE'|site=='BLACKBALL'|site=='ZIMMERMAN'|site=='GRAPHITE MINE'|site=='CP TUNNEL'|site=='ELROY SPARTA')
+#Filtering the database to just contain the bats and far samples in this study. 
+
+dis.dat.master$site <- factor(dis.dat.master$site, levels = c("SOUTH LAKE MINE","GRAPHITE MINE","CP TUNNEL", "BLACKBALL", "ZIMMERMAN", "MEAD MINE","ELROY SPARTA"))
+#re-ordering factor 
+
+early.point.temps <- dis.dat.master %>% filter(season=="hiber_earl") %>%
+  select(site, season, swab_type, temp)
+late.point.temps <- dis.dat.master %>% filter(season=="hiber_late") %>%
+  select(site, season, swab_type, temp)
+#separating the master disease database by early and late hibernation
+
+point.temps <- rbind(early.point.temps, late.point.temps)
+#Combined dataframe
+
+
+## Mean point temperature (bats and fars) +/- 1 SD
+mean.point.temps <- point.temps %>%
+  group_by(site, season) %>%
+  summarise(mean.point.temp = mean(temp, na.rm=T), mean.point.temp.sd = sd(temp, na.rm=T)) %>%
+  mutate(hi.sd = mean.point.temp + mean.point.temp.sd, lo.sd = mean.point.temp - mean.point.temp.sd)
+#Summary table of mean torpor bout temperature data across sites. Mean and SD range. 
+
+mean.point.temps.p <- ggMarginal((ggplot(aes(x=site, y=mean.point.temp, group=season), data=mean.point.temps) +
+                                         geom_point(aes(x=site, y=temp, fill=temp, shape=season), position=position_dodge(0.8),data=point.temps, size=2) +
+                                         geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), position=position_dodge(0.8),width=0.2, size=0.7) +
+                                         geom_point(aes(shape=season), position=position_dodge(0.8), size=4, color="Black", fill="White", stroke=1)+
+                                         scale_fill_gradient(low="Blue", high="Red", name="Temperature (Celsius)")+
+                                         labs(x=NULL, y="Temperature (Celsius)") +
+                                    scale_y_continuous(breaks=seq(0,12,1), labels=c("0","1","2","3","4","5","6","7","8","9","10","11","12"))+
+                                         scale_shape_manual(values=c(21,24))+
+                                         theme(
+                                           axis.text.y = element_text(size=13),
+                                           axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+                                           axis.title = element_text(size=15),
+                                           legend.title = element_text(size=13),
+                                           legend.text = element_text(size=13),
+                                           legend.position = "top"
+                                         )), type="histogram", fill="darkgray", bins=15);mean.point.temps.p
+#Plotted
+
+
+
+
+
+
+
+
+
 #### Behavior ~ Temperature ####
 
 ## Arousal frequency: 
 
-m.arousal.freq.temp <- glmer(arousal.freq.days ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df); summary(m.arousal.freq.temp, dispersion=1)
+m.arousal.freq.temp <- glmer(arousal.freq.days ~ mean.torpor.temp + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df); summary(m.arousal.freq.temp)
 #This needs to be modeled as an exponential distribution because it is time between events. Dispersion=1 should make it exponential distribution. 
 plot(dis.df$arousal.freq.days ~ dis.df$mean.torpor.temp)
 #Doesn't seem like there's any relationship. 
@@ -621,25 +739,156 @@ plot(dis.df$mean.torpor.length.days ~ dis.df$mean.torpor.temp)
 #Doesn't seem like there's any relationship. 
 
 
+
+
 ## Mean change in temperature bout temperature following arousal 
 
-m.d.torpor.temp.m <- lmer(mean.d.torpor.temp.unweighted ~ mean.torpor.temp + (1|site), data=dis.df); summary(m.d.torpor.temp.m)
-#this is not a good model. Violates assumptions of normality. 
+m.d.torpor.temp.m <- glmmTMB(mean.torpor.temp ~ mean.d.torpor.temp.weighted + (1|site), family=Gamma(link="log"), data=dis.df); summary(m.d.torpor.temp.m)
+#Singularity issues when adding sex as random effect. 
+plot(allEffects(m.d.torpor.temp.m))
 #Can change between weighted and unweighted. 
-plot(dis.df$mean.d.torpor.temp.unweighted ~ dis.df$mean.torpor.temp)
+plot( dis.df$mean.torpor.temp ~ dis.df$mean.d.torpor.temp.weighted)
+
+
+m.fst <- as.data.frame(expand.grid(mean.d.torpor.temp.weighted=seq(-2,1,0.01), site=unique(dis.df$site), sex=unique(dis.df$sex)))
+m.fst.yhat <- as.data.frame(predict(m.d.torpor.temp.m, m.fst, se.fit=T, re.form=NA, type='response'))
+m.fst.yhat.fin <- cbind(m.fst, m.fst.yhat)
+m.fst.yhat.fin <- m.fst.yhat.fin %>%
+  group_by(mean.d.torpor.temp.weighted) %>%
+  summarise(model.fit = mean(fit), model.se = mean(se.fit)) %>%
+  mutate(lo.ci = model.fit-(1.96*model.se), hi.ci = model.fit + (1.96*model.se))
+#This dataframe contains model predictions and 95% confidence intervals. 
+
+
+p.dev.fst.temp2 <- ggplot(aes(x=mean.d.torpor.temp.weighted, y=model.fit), data=m.fst.yhat.fin) +
+  geom_ribbon(aes(x=mean.d.torpor.temp.weighted, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
+  geom_point(aes(x=mean.d.torpor.temp.weighted, y=mean.torpor.temp, fill=site, shape=sex), size=3, data=dis.df)+
+  geom_line(color="black", size=1.5)+
+  #scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(y="Weighted Mean in Change in Mean Torpor Bout Temperature Following Arousal (Celsius)", y="Mean Torpor Bout Temperature (Celsius)")+
+  guides(fill = guide_legend(override.aes = list(shape=21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p.dev.fst.temp2
+#Plot. 
+
+
+
 
 
 ## Mean deviation in mean torpor bout temperature from mean of first torpor bout temperature 
 
-m.dev.first.torpor <- lmer(mean.temp.dev.first.torpor.weighted ~ mean.torpor.temp + (1|site), data=dis.df); summary(m.dev.first.torpor)
-#While this model structure is not great (violates assumptions of normality), this does suggest a positive association between mean temperature and average deviations. 
+m.dev.first.torpor <- glmmTMB(mean.torpor.temp ~ mean.temp.dev.first.torpor.weighted+ (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df); summary(m.dev.first.torpor)
 #Can change between weighted and unweighted. 
 
-plot(dis.df$mean.temp.dev.first.torpor.weighted ~ dis.df$mean.torpor.temp)+
-  abline(a=-3.656, b=0.324)
-#raw data plotted with model estimate. 
+m.fst.2 <- as.data.frame(expand.grid(mean.temp.dev.first.torpor.weighted=seq(-5,1,0.01), site=unique(dis.df$site), sex=unique(dis.df$sex)))
+m.fst.2.yhat <- as.data.frame(predict(m.dev.first.torpor , m.fst.2, se.fit=T, re.form=NA, type='response'))
+m.fst.2.yhat.fin <- cbind(m.fst.2, m.fst.2.yhat)
+m.fst.2.yhat.fin <- m.fst.2.yhat.fin %>%
+  group_by(mean.temp.dev.first.torpor.weighted) %>%
+  summarise(model.fit = mean(fit), model.se = mean(se.fit)) %>%
+  mutate(lo.ci = model.fit-(1.96*model.se), hi.ci = model.fit + (1.96*model.se))
+#This dataframe contains model predictions and 95% confidence intervals. 
 
 
-#### Disease ~ mean torpor bout temp ####
-#### Disease ~ mean change in torpor bout temp ####
-#### Disease ~ mean deviation from temp of first torpor bout ####
+p.dev.fst.temp2 <- ggplot(aes(x=mean.temp.dev.first.torpor.weighted, y=model.fit), data=m.fst.2.yhat.fin) +
+  geom_ribbon(aes(x=mean.temp.dev.first.torpor.weighted, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
+  geom_point(aes(x=mean.temp.dev.first.torpor.weighted, y=mean.torpor.temp, fill=site, shape=sex), size=3, data=dis.df)+
+  geom_line(color="black", size=1.5)+
+  #scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Weighted Mean in Deviation from First Torpor Bout (Celsius)", y="Mean Torpor Bout Temperature (Celsius)")+
+  guides(fill = guide_legend(override.aes = list(shape=21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p.dev.fst.temp2
+#Plot. 
+
+
+#### UV score ~ Behavior ####
+#### Pd score ~ behavior ####
+#### Wing score ~ behavior ####
+#### Weight loss ~ behavior ####
+
+#For modeling purposes, it's going to be easiest if the mass change metric was in positive space, so transforming it here:
+dis.df$d.mass.daily.p <- -1*dis.df$d.mass.daily
+#Positive values for loss in mass. 
+
+
+
+## Arousal frequency
+
+m.dmass1 <- glmmTMB(d.mass.daily.p ~ arousal.freq.days + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass1)
+#crossed random effects. 
+plot(allEffects(m.dmass1))
+plot(dis.df$d.mass.daily.p ~ dis.df$arousal.freq.days)
+#Pretty clear negative negative relationship between arousal frequency and the amount of mass lost. 
+#In other words, if you woke up more frequently, you lost more mass. 
+
+m.dmass1.df <- as.data.frame(expand.grid(arousal.freq.days=seq(5,25,0.01), site=unique(dis.df$site), sex=unique(dis.df$sex)))
+m.dmass1.yhat <- as.data.frame(predict(m.dmass1, m.dmass1.df, se.fit=T, re.form=NA, type='response'))
+m.dmass1.yhat.fin <- cbind(m.dmass1.df, m.dmass1.yhat)
+m.dmass1.yhat.fin <- m.dmass1.yhat.fin %>%
+  group_by(arousal.freq.days) %>%
+  summarise(model.fit = mean(fit), model.se = mean(se.fit)) %>%
+  mutate(lo.ci = model.fit-(1.96*model.se), hi.ci = model.fit + (1.96*model.se))
+#This dataframe contains model predictions and 95% confidence intervals. 
+
+p.dmass1 <- ggplot(aes(x=arousal.freq.days, y=model.fit), data=m.dmass1.yhat.fin) +
+  geom_ribbon(aes(x=arousal.freq.days, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
+  geom_point(aes(x=arousal.freq.days, y=d.mass.daily.p, fill=mean.torpor.temp, shape=sex), size=3, color="black", data=dis.df)+
+  geom_line(color="black", size=1.5)+
+  scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Arousal Frequency (days)", y="Daily Mass Loss (grams)")+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p.dmass1
+#Plot. 
+
+
+m.dmass2 <- glmer(d.mass.daily.p ~ log10(arousal.freq.days)*mean.torpor.temp + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass2)
+#Convergence issues when using non-transformed arousal frequency value. I don't know if logging that metric
+#is appropriate, but it allows model to run. Suggests no association. 
+
+
+
+
+
+## Mean torpor temperature
+
+m.dmass3 <- glmmTMB(d.mass.daily.p ~ mean.torpor.temp + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass3)
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.torpor.temp)
+#Appears to be no association. 
+
+
+
+
+
+## Mean change in mean torpor bout temperature following arousal (weighted)
+
+m.dmass4 <- glmmTMB(d.mass.daily.p ~ mean.d.torpor.temp.weighted + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass4)
+#Nothing by itself
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.d.torpor.temp.weighted)
+
+#What about interacting with temperature? 
+m.dmass5 <- glmmTMB(d.mass.daily.p ~ mean.d.torpor.temp.weighted*mean.torpor.temp + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass5)
+#No interaction
+
+
+
+
+#### Pathogen growth ~ behavior ####
