@@ -393,7 +393,7 @@ mean.torpor.temp.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.torpor.temp.mea
   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
   labs(x=NULL, y="Mean Torpor Bout Temperature (Celsius)") +
-    scale_y_continuous(breaks=seq(1,9,1), labels=c("1","2","3","4","5","6","7","8","9"))+
+    scale_y_continuous(limits=c(0,12), breaks=seq(0,12,1), labels=c("0","1","2","3","4","5","6","7","8","9","10","11","12"))+
   theme(
     axis.text.y = element_text(size=13),
     axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
@@ -664,6 +664,9 @@ sex.summ <- dis.df %>%
 
 
 
+
+
+
 # How much spatial variation exists in each site, according to point temperatures in late and early hibernation? 
 
 dis.dat.master <- read.csv("/Users/alexg8/Dropbox/MIDWEST_WNS/DATA/midwest_master.csv")
@@ -695,9 +698,10 @@ mean.point.temps <- point.temps %>%
   mutate(hi.sd = mean.point.temp + mean.point.temp.sd, lo.sd = mean.point.temp - mean.point.temp.sd)
 #Summary table of mean torpor bout temperature data across sites. Mean and SD range. 
 
-mean.point.temps.p <- ggMarginal((ggplot(aes(x=site, y=mean.point.temp, group=season), data=mean.point.temps) +
+
+mean.point.temps.p <- (ggplot(aes(x=site, y=mean.point.temp, group=season), data=mean.point.temps) +
                                          geom_point(aes(x=site, y=temp, fill=temp, shape=season), position=position_dodge(0.8),data=point.temps, size=2) +
-                                         geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), position=position_dodge(0.8),width=0.2, size=0.7) +
+                                         geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), position=position_dodge(0.8),width=0.5, size=0.7) +
                                          geom_point(aes(shape=season), position=position_dodge(0.8), size=4, color="Black", fill="White", stroke=1)+
                                          scale_fill_gradient(low="Blue", high="Red", name="Temperature (Celsius)")+
                                          labs(x=NULL, y="Temperature (Celsius)") +
@@ -710,13 +714,50 @@ mean.point.temps.p <- ggMarginal((ggplot(aes(x=site, y=mean.point.temp, group=se
                                            legend.title = element_text(size=13),
                                            legend.text = element_text(size=13),
                                            legend.position = "top"
-                                         )), type="histogram", fill="darkgray", bins=15);mean.point.temps.p
+                                         ));mean.point.temps.p
 #Plotted
 
+#I also want to plot the average torpor bout temperature data on this plot to see how it compares to the variation that was available:
+mean.point.temps.p.df <- mean.point.temps
+#Making a new combined plotting dataframe. Combines mean point temps from early and late hibernation as well as mean torpor bout temps. 
+mean.torpor.temp.summ.p.df <- mean.torpor.temp.summ
+mean.torpor.temp.summ.p.df$season <- "Mean Torpor Bout Temperature"
+colnames(mean.torpor.temp.summ.p.df) <- c("site","mean.point.temp","mean.point.temp.sd","hi.sd",'lo.sd',"season")
+mean.torpor.temp.summ.p.df <- rbind(mean.torpor.temp.summ.p.df, mean.point.temps.p.df)
+#This dataframe contains all the mean data. 
 
+#Now need to combine the point temperature dataframe with the mean torpor bout temperature dataframe:
+dis.df.nan.temps <- dis.df %>%
+  filter(!is.na(mean.torpor.temp)) %>%
+  select(site, mean.torpor.temp) %>%
+  mutate(season="Mean Torpor Bout Temperature", swab_type=NA)
+colnames(dis.df.nan.temps) <- c("site","temp","season","swab_type")
+#This dataframe just contains each bat's mean torpor bout temperature. The season and swab_type columns are simply for merging with
+#the point temperature data
 
+point.temps.p.df <- rbind(point.temps, dis.df.nan.temps)
+#Combined point temp and torpor temp dataframe
 
+mean.torpor.temp.summ.p.df$season <- factor(mean.torpor.temp.summ.p.df$season, levels = c("hiber_earl","Mean Torpor Bout Temperature","hiber_late"))
+point.temps.p.df$season <- factor(point.temps.p.df$season, levels = c("hiber_earl","Mean Torpor Bout Temperature","hiber_late"))
+#re-ordering factor 
 
+mean.point.temps.p2 <- (ggplot(aes(x=site, y=mean.point.temp, group=season), data=mean.torpor.temp.summ.p.df) +
+                         geom_point(aes(x=site, y=temp, fill=temp, shape=season), position=position_dodge(0.5),data=point.temps.p.df, size=4) +
+                         geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), position=position_dodge(0.5),width=0.5, size=0.7) +
+                         geom_point(aes(shape=season), position=position_dodge(0.5), size=7, color="Black", fill="White", stroke=1)+
+                         scale_fill_gradient(low="Blue", high="Red", name="Temperature (Celsius)")+
+                         labs(x=NULL, y="Temperature (Celsius)") +
+                         scale_y_continuous(breaks=seq(0,12,1), labels=c("0","1","2","3","4","5","6","7","8","9","10","11","12"))+
+                         scale_shape_manual(values=c(21,22,24))+
+                         theme(
+                           axis.text.y = element_text(size=13),
+                           axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+                           axis.title = element_text(size=15),
+                           legend.title = element_text(size=13),
+                           legend.text = element_text(size=13),
+                           legend.position = "top"
+                         ));mean.point.temps.p2
 
 
 
@@ -750,7 +791,7 @@ plot(allEffects(m.d.torpor.temp.m))
 plot( dis.df$mean.torpor.temp ~ dis.df$mean.d.torpor.temp.weighted)
 
 
-m.fst <- as.data.frame(expand.grid(mean.d.torpor.temp.weighted=seq(-2,1,0.01), site=unique(dis.df$site), sex=unique(dis.df$sex)))
+m.fst <- as.data.frame(expand.grid(mean.d.torpor.temp.weighted=seq(-2,0.6,0.01), site=unique(dis.df$site), sex=unique(dis.df$sex)))
 m.fst.yhat <- as.data.frame(predict(m.d.torpor.temp.m, m.fst, se.fit=T, re.form=NA, type='response'))
 m.fst.yhat.fin <- cbind(m.fst, m.fst.yhat)
 m.fst.yhat.fin <- m.fst.yhat.fin %>%
@@ -766,7 +807,7 @@ p.dev.fst.temp2 <- ggplot(aes(x=mean.d.torpor.temp.weighted, y=model.fit), data=
   geom_line(color="black", size=1.5)+
   #scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
   scale_shape_manual(values=c(21,24), name="Sex")+
-  labs(y="Weighted Mean in Change in Mean Torpor Bout Temperature Following Arousal (Celsius)", y="Mean Torpor Bout Temperature (Celsius)")+
+  labs(x="Weighted Mean in Change in Mean Torpor \n Bout Temperature Following Arousal (Celsius)", y="Mean Torpor Bout Temperature (Celsius)")+
   guides(fill = guide_legend(override.aes = list(shape=21)))+
   theme(
     axis.text = element_text(size=13),
@@ -786,7 +827,7 @@ p.dev.fst.temp2 <- ggplot(aes(x=mean.d.torpor.temp.weighted, y=model.fit), data=
 m.dev.first.torpor <- glmmTMB(mean.torpor.temp ~ mean.temp.dev.first.torpor.weighted+ (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df); summary(m.dev.first.torpor)
 #Can change between weighted and unweighted. 
 
-m.fst.2 <- as.data.frame(expand.grid(mean.temp.dev.first.torpor.weighted=seq(-5,1,0.01), site=unique(dis.df$site), sex=unique(dis.df$sex)))
+m.fst.2 <- as.data.frame(expand.grid(mean.temp.dev.first.torpor.weighted=seq(-5,0.3,0.01), site=unique(dis.df$site), sex=unique(dis.df$sex)))
 m.fst.2.yhat <- as.data.frame(predict(m.dev.first.torpor , m.fst.2, se.fit=T, re.form=NA, type='response'))
 m.fst.2.yhat.fin <- cbind(m.fst.2, m.fst.2.yhat)
 m.fst.2.yhat.fin <- m.fst.2.yhat.fin %>%
@@ -815,7 +856,26 @@ p.dev.fst.temp2 <- ggplot(aes(x=mean.temp.dev.first.torpor.weighted, y=model.fit
 
 
 #### UV score ~ Behavior ####
+
+dis.df$d.uv.score <- as.factor(dis.df$d.uv.score)
+#Making the change in UV score a factor because treating it as numeric seems inappropriate. 
+
+uv.m1 <- lmer(mean.torpor.temp ~ d.uv.score + (1|site) + (1|sex), data=dis.df);summary(uv.m1)
+plot(allEffects(uv.m1))
+plot(dis.df$mean.torpor.temp ~ dis.df$d.uv.score)
+#This doesn't really seem like anything. 
+
 #### Pd score ~ behavior ####
+
+dis.df$d.gd.score <- as.factor(dis.df$d.gd.score)
+#Making the change in gd score a factor because treating it as numeric seems inappropriate. 
+
+gd.m1 <- lmer(mean.torpor.temp ~ d.gd.score + (1|site) + (1|sex), data=dis.df);summary(gd.m1)
+plot(allEffects(gd.m1))
+plot(dis.df$mean.torpor.temp ~ dis.df$d.gd.score)
+#This doesn't really seem like anything. 
+
+
 #### Wing score ~ behavior ####
 #### Weight loss ~ behavior ####
 
