@@ -1,46 +1,35 @@
-TestTemp0.8<-nls(ColonySize~K/(1+((K/N0)-1)*exp(-(a*(((1+c*exp(-p*Temp))^-1)-exp(-(Tmax-Temp)/(Tmax-Topt))))
-                                                *Day)), 
-                 data=Data,
-                 start=list(r=0.2), trace=TRUE)
+library(tidyverse)
 
-#Above is the structure of the logistic pathogen growth model. The nls() function takes data and fist the logistic growth model 
-#provided to the data using least squares method.
+#The parameters that Skylar estimated for deriving r. 
+a <- 0.719
+g <- 5.262
+p <- 0.309
+Tmax <- 21.5
+Topt <- 14.05
 
-#Bayesian alternatives to this approach are the packages 'JAGS' and 'BRMS'
-
-Test<-nls(r~a*(((1+c*exp(-p*Temp))^-1)-exp(-(Tmax-Temp)/(Tmax-Topt))), 
-          data=JohnsonLewin,
-          start=list(a=2, c=5, p=0.3, Topt=14, Tmax=19), trace=TRUE,
-          control=nls.control(printEval=TRUE, maxiter=1000, warnOnly=TRUE),
-          upper=c(Inf,Inf,Inf,20,20), lower=c(0,0,0,0,0), algorithm = "port")
+#Equation for deriving r. This is called a Logan-10 function. 
+r <- a*(((1+g*exp(-p*Temp))^-1) - exp(-(Tmax-Temp)/(Tmax-Topt)))
 
 
-
-model <- "
-model {
-#Priors for fixed effects - 
-a ~ dunif(0, 5) ##a shape parameter
-g ~ dunif(0, 30) ##a shape parameter
-p ~ dunif(0, 1) ##a shape parameter
-Tmax ~ dnorm(21, 2) ##Thermal maximum
-Topt ~ dnorm(14, 3) ##Delta Temp
-
-sigma ~ dunif(0, 100) # standard deviation
-tau <- 1 / (sigma * sigma) # sigma^2 doesn't work in JAGS
-
-#Likelihoods
-for (i in 1:NCoef) {
-y[i] ~ dnorm(mu[i], tau) #tau is precision (1 / variance)
-mu[i] <- a*((pow((1+g*exp(-p*Temp[i])), -1))-exp(-(Tmax-Temp[i])/(Tmax - Topt)))
-}
-
-}"
+t.dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_raw_working.csv") %>%
+  mutate(date = as.Date(date, format="%Y-%m-%d")) %>%
+  filter(behavior=="Torpor" & !is.na(datetime)) %>%
+  group_by(site, trans_id, date) %>%
+  summarise(temp = mean(temp))
+#Reading in raw transmitter data and summarising the daily temperature of each, excluding arousal bouts. 
 
 
-Tmax_verant<-as.numeric(jags.m2$BUGSoutput$mean[1]) #21.5 [20.54-22.52]
-a_verant<-as.numeric(jags.m2$BUGSoutput$mean[3]) #0.719 [0.419-1.211]
-g_verant<-as.numeric(jags.m2$BUGSoutput$mean[5]) #5.262 [1.995-19.459]
-p_verant<-as.numeric(jags.m2$BUGSoutput$mean[6]) #0.309 [0.156-0.819]
-Topt_verant<-as.numeric(jags.m2$BUGSoutput$mean[2]) #14.05 [95% CI = 12.965-15.162]
-## THESE ARE THE PARAMETERS THAT SKYLAR ESTIMATED USING VERANT'S DATA AND JAGS
-## THESE PARAMETERS ARE USED TO ESTIMATE r
+i.dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_25APR2023.csv") %>%
+  filter(season=="hiber_earl") %>%
+  mutate(gdL.c = mean_gdL + 0.0000000001, date=as.Date(date, format="%Y-%m-%d")) 
+#This contains only the early hibernation data. I added an extremely small constant to make all gd values of 0 a positive number that can be 
+#fed to the pathogen growth model. 
+
+
+t.dat.fst <- t.dat %>%
+  group_by(trans_id) %>%
+  filter(date==min(date)) %>%
+  mutate(gdL = i.dat$gdL.c[match(trans_id, i.dat$trans_id)]) %>%
+  select(trans_id, date, gdL)
+t.dat$gdL <- left_join(t.dat, t.dat.fst, by=c("trans_id", "date"), keep=NULL)
+#Column on which to simulate pathogen growth. The first value for each bat needs to be its load value measured in early hibernation. 

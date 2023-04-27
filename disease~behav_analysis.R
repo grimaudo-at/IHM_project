@@ -662,11 +662,6 @@ sex.summ <- dis.df %>%
 
 
 
-
-
-
-
-
 # How much spatial variation exists in each site, according to point temperatures in late and early hibernation? 
 
 dis.dat.master <- read.csv("/Users/alexg8/Dropbox/MIDWEST_WNS/DATA/midwest_master.csv")
