@@ -30,7 +30,7 @@ master$behavior[is.na(master$behavior)] <- "Torpor"
 #to (i+1)+0.5, it additionally is classified as part of the arousal event. The below code runs the loop twice, meaning that the two datapoints
 #immediately before and after the arousal can be classified as part of that arousal if they meet the above conditions. 
 
-x<-1
+x<-2
 start.time<-Sys.time()
 repeat{
   print(x)
@@ -57,7 +57,7 @@ for(i in 2:nrow(master)) {if(master[i,2] == master[i-1,2]) {if(master[i,10] == m
 
 #### Summarizing event data ####
 
-master <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_raw_working.csv")
+master <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv")
 
 master<-filter(master, temp < 50)
 #This removes several instances where the loggers hay-wired and read extremely high values. This only happened for two loggers, #104 and 108, both at

@@ -276,7 +276,8 @@ obs_per <- logger_meta %>%
 master$date_deployed <- obs_per$date_deployed[match(master$site, obs_per$site)]
 master$date_retrieved <- obs_per$date_retrieved[match(master$site, obs_per$site)]
 master <- master %>%
-  filter(!(date<=date_deployed) & !(date>=date_retrieved))
+  filter(date<=date_retrieved) %>%
+  filter(date>=date_deployed)
 #This dataframe now does not contain any data outside of the period that the transmitter was on a bat. 
 
 master$datetime <- paste(master$date, master$time, sep=" ")
