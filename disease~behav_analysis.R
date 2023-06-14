@@ -149,10 +149,10 @@ ind.summ$mean.torpor.temp <- dat$mean.torpor.temp[match(ind.summ$trans_id, dat$t
 dat$d.mean.torpor.temp <- NA
 #This is the column in which I'll store the change in temperature data. 
 
-for(i in 2:nrow(dat)) {if(dat[i,3] == "Arousal") {dat[i,15] <- NA}
+for(i in 3:nrow(dat)) {if(dat[i,3] == "Arousal") {dat[i,15] <- NA}
   else{if(dat[i,2] != dat[i-1,2]) {dat[i,15] <- NA}
     else{if(dat[i,2] != dat[i-2,2]) {dat[i,15] <- NA}
-      else{if(is.na(dat[i-2,12])=="TRUE") {dat[i,15] <- dat[i,7] - dat[i-4,7]}
+      else{if(is.na(dat[i-2,12])=="TRUE") {dat[i,15] <- NA}
         else{dat[i,15] <- dat[i,7] - dat[i-2,7]}}
       }
     }
@@ -216,22 +216,16 @@ ind.summ$mean.temp.dev.first.torpor.unweighted <- mean.temp.dev.first.torpor.unw
 #Bringing the weighted and unweighted averages into the individual summary dataframe. 
 
 
-
-
-
 #### Matching in disease data ####
 
-dis.dat.master <- read.csv("/Users/alexg8/Dropbox/MIDWEST_WNS/DATA/midwest_master.csv")
+dis.dat.master <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_5JUN2023.csv")
+#This is the disease data for bats in this study available as of the 5th of June, 2023. This dataset does not include all infection
+#data that will ultimately be available, as Jeff Foster et al. are still processing/correcting samples. 
 trans_meta<- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_metadata.csv")
 #this dataframe doesn't have any infection data. That will have to be incorporated later once it's available. 
 
 dis.dat.master$date <- as.Date(dis.dat.master$date, format="%m/%d/%y")
 #Fixing date column.
-
-dis.dat.master <- dis.dat.master %>%
-  filter(!is.na(trans_id) & date>"2021-10-01" & date<"2022-05-01") %>%
-  filter(site=="SOUTH LAKE MINE"|site=='MEAD MINE'|site=='BLACKBALL'|site=='ZIMMERMAN'|site=='GRAPHITE MINE'|site=='CP TUNNEL'|site=='ELROY SPARTA')
-#Filtering the database to just contain the bats in this study. 
 
 dis.early <- filter(dis.dat.master, season=="hiber_earl")
 dis.late <- filter(dis.dat.master, season=="hiber_late")
@@ -250,11 +244,11 @@ bad.bands<-filter(bad.bands, band_early != band_late)
 #These are inconsistencies between early and late hibernation in the band # recorded for a bat with the same trans_id. 
 #The two bats in South Lake had lost their bands (but not their transmitters) over the course of winter, so their late hibernation band was the one we replaced it with. 
 
-dis.df <- select(dis.early, trans_id, trans_model, trans_weight_g, site, section, state, band, swab_id, sex, mass, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2)
+dis.df <- select(dis.early, trans_id, trans_model, trans_weight_g, site, section, state, band, swab_id, sex, mass, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2, true_mean_gdL)
 #This is going to be the dataframe with which I combine the ind.summ dataframe. 
 
 colnames(dis.df) <- c("trans_id", "trans.model", "trans.weight.g", "site", "section.early", "state", "band", "swab.id.early", "sex", "mass.early","uv.orange.early", 
-                      "uv.right.early", "gd.wall.early","gd.wall2.early", "wing.score.early","wing.score2.early")
+                      "uv.right.early", "gd.wall.early","gd.wall2.early", "wing.score.early","wing.score2.early", "gdL.early")
 #Re-naming columns so that their early disease information is identifiable.
 
 dis.df$mass.late <- dis.late$mass[match(dis.df$trans_id, dis.late$trans_id)]
@@ -265,6 +259,7 @@ dis.df$gd.wall.late <- dis.late$gd_wall[match(dis.df$trans_id, dis.late$trans_id
 dis.df$gd.wall2.late <- dis.late$gd_wall2[match(dis.df$trans_id, dis.late$trans_id)]
 dis.df$wing.score.late <- dis.late$wing_score[match(dis.df$trans_id, dis.late$trans_id)]
 dis.df$wing.score2.late <- dis.late$wing_score2[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$gdL.late <- dis.late$true_mean_gdL[match(dis.df$trans_id, dis.late$trans_id)]
 #Matching in the disease data matching on transmitter ID. 
 
 dis.df$sex.late <- dis.late$sex[match(dis.df$trans_id, dis.late$trans_id)]
@@ -316,6 +311,10 @@ dis.df$sampling.duration.days <- ind.summ$sampling.duration.days[match(dis.df$tr
 dis.df$d.mass.daily <- dis.df$d.mass/dis.df$sampling.duration.days
 #This is a measure of weight change that corrects for differences in the sampling interval, since bats from all sites were not sampled at the same time.
 #it is a "daily weight loss" metric. 
+
+dis.df$d.gdL <- dis.df$gdL.late - dis.df$gdL.early
+#Over-winter pathogen growth.
+
 
 ## Can now match in all the transmitter summary data for each individual: 
 dis.df <- left_join(dis.df, ind.summ[,2:11], by="trans_id")

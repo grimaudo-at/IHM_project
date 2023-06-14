@@ -129,3 +129,14 @@ For the last couple of weeks, when not on vacation or at conferences, I've been 
 
 # 6/12/2023
 I found the bug in the transmitter trimming code and fixed it. It was a simple filtering error in a trimming pipeline in the transmitter_data_cleaning_calibrating.R script. I re-wrote the transmitter_raw_working.csv file in the Data folder and then re-ran the arousal_classification.R script to re-classify arousals and behavior based on the re-trimmed transmitter datasets, save the new dataset again to transmitter_raw_working.csv, and then re-created the behavior summary dataset arousals_torpors_working.csv. 
+
+# 6/14/2023
+Turns out that the 'bug' I found in the code wasn't actually the problem. It turns out that a large number of the transmitters stopped logging new data sometime in mid-February, on pretty consistent dates in a site. They filled with data prematurely. I think what happened is that I ordered DS1922L iButton loggers, which can store over 4,000 data points and, with the logging rate I programmed, would have been able to last the entirety of the winter. However, I don't think I received DS1922L's, but rather DS2422, which have about half of the data storage capacity of the DS1922L, and I didn't catch this mistake when I received the order. Therefore, I programmed the ibuttons to record on intervals that a DS1922L could handle for the whole winter, but not the DS2422, which is unfortunately the logger model I received. I'm not entirely sure how to proceed and will need to chat with Kate about this. 
+
+Today I also re-cleaned and re-summarized all of the transmitter data. Some of the behavioral data changed, particularly the metrics regarding cahnge in temperature relative to mean temperature of other torpor bouts, so I need to figure out why that happened and if it's okay. **This might have something to do with either the 1) re-written code to trim the transmitter datasets or 2) the left_join of the summarized infection data with the summarized behavioral data in the disease~behav_analysis.R script.** Will need to figure that out before proceeding. 
+
+On the to-do list: 
+1) Figure out why behavioral metrics changed their distribution following re-running the transmitter data pipeline. 
+2) Summarize the available infection data and pair with simulation output to see how they line up. 
+3) Plot barometer/psychrometer/camera/transmitter data together. 
+4) Re-visit the analyses I discussed with Kate/Joe on 4/19/2023 (in notebook)

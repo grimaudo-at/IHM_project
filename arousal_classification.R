@@ -25,12 +25,12 @@ master$behavior[master$temp >= (master$max.temp-10)] <- "Arousal"
 master$behavior[is.na(master$behavior)] <- "Torpor"
 #This identifies each arousal bout using the same methodology as Reeder et al. 2012. However, while it accurately identifies arousals, it does
 #mis-classify much of the 'ramping up' and 'ramping down' temperatures on either end of an arousal as torpor bouts. To address this, the below 
-#for-loop looks at the temperature values immediately before the arousal event, at position i. If i is greater than or equal to i-1 + 0.5, it is 
+#for-loop looks at the temperature values immediately before the arousal event, at position i. If i is greater than or equal to i-1 + 1, it is 
 #classified as part of the arousal event. Similarly, if the temperature value immediately following the arousal event, i, is greater than or equal
-#to (i+1)+0.5, it additionally is classified as part of the arousal event. The below code runs the loop twice, meaning that the two datapoints
+#to (i+1)+1.0, it additionally is classified as part of the arousal event. The below code runs the loop twice, meaning that the two datapoints
 #immediately before and after the arousal can be classified as part of that arousal if they meet the above conditions. 
 
-x<-2
+x<-3
 start.time<-Sys.time()
 repeat{
   print(x)
@@ -54,6 +54,26 @@ for(i in 2:nrow(master)) {if(master[i,2] == master[i-1,2]) {if(master[i,10] == m
 
 #write.csv(master, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv", row.names = F)
 
+p <- list()
+logg <- unique(master$trans_id)
+for(i in 1:length(logg)){
+  p[[i]] <- list()
+  dat <- subset(master, trans_id==logg[i])
+  p[[i]][[1]] <- ggplot(dat, aes(datetime,temp, color=behavior)) + 
+    geom_line(color="black")+
+    geom_point(alpha=0.9)+
+    scale_y_continuous(limits=c(-2,30))+
+    labs(x="Date", y=expression("Temperature " (degree*C)~" "))+
+    scale_color_manual(values=c("Arousal"="red", "Torpor"="blue"))+
+    ggtitle(paste(dat$trans_id))+
+    theme(panel.background = element_blank(),
+          legend.position = "none",
+          axis.text = element_text(size=20, color='grey16'), 
+          axis.title = element_text(size=25, color="grey16"),
+          axis.ticks = element_line(size=0.8, color="grey57"),
+          panel.border = element_rect(colour = "grey57", fill=NA, size=0.8))
+}
+#list of ggplots to plot for quality control. 
 
 #### Summarizing event data ####
 
@@ -73,13 +93,13 @@ master$datetime <- as.POSIXct(strptime(paste(master$date, master$time), "%Y-%m-%
 
 mean.torpor.temps <- master %>%
   group_by(site, trans_id, behavior) %>%
-  summarise(mean.torpor.temp = mean(temp)) %>%
+  summarise(mean.torpor.temp = mean(temp, na.rm=T)) %>%
   filter(behavior != "Arousal")
 #This dataframe contains each bat's average torpor temperature. 
   
 tr.sum <- master %>%
   group_by(site, trans_id, behavior, event_num) %>%
-  summarise(start.datetime = min(datetime), end.datetime=max(datetime), mean.temp = mean(temp), median.temp = median(temp), min.temp = min(temp), max.temp = max(temp), sd.temp = sd(temp)) %>%
+  summarise(start.datetime = min(datetime, na.rm=T), end.datetime=max(datetime, na.rm=T), mean.temp = mean(temp, na.rm=T), median.temp = median(temp, na.rm=T), min.temp = min(temp, na.rm=T), max.temp = max(temp, na.rm=T), sd.temp = sd(temp, na.rm=T)) %>%
   mutate(event.length.days = as.numeric(difftime(end.datetime, start.datetime, units="days")), temp_range = max.temp - min.temp) %>%
   group_by(trans_id) %>%
   arrange(event_num, .by_group = T)
@@ -88,10 +108,18 @@ tr.sum <- master %>%
 tr.sum$mean.torpor.temp <- mean.torpor.temps$mean.torpor.temp[match(tr.sum$trans_id, mean.torpor.temps$trans_id)]
 #Matching in the mean torpor temperature data. 
 
-
 #write.csv(tr.sum, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv", row.names=F)
 
-
+p1<-master %>%
+  mutate(c=1) %>%
+  group_by(site, logger_model, trans_id) %>%
+  mutate(max.date=max(date)) %>%
+  summarise(end_date = mean(max.date)) %>%
+  mutate(c=1) %>%
+  ungroup() %>%
+  group_by(site, logger_model, end_date) %>%
+  summarise(num_logg = sum(c))
+  
 #### Attempting to classify movements and locations #####
 ## THE BELOW CHUNK OF CODE ASSIGNS 'LOCATIONS' TO TORPOR EVENTS, ATTEMPTING TO CLASSIFY MOVEMENTS TO DIFFERENT SECTIONS. THIS IS AN IMPERFECT PROCESS AND CERTAINLY
 ## DOES NOT CORRECTLY IDENTIFY ALL TRUE MOVEMENTS AND MIS-CLASSIFIES OTHERS. 

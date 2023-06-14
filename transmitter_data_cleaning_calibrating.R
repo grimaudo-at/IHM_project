@@ -285,17 +285,17 @@ master$datetime <- as.POSIXct(strptime(master$datetime, "%Y-%m-%d %H:%M:%S",tz='
 #This column is necessary so that R can plot data over time on hourly scales. 
 
 #p <- list()
-#logg <- unique(master$uniq)
+#logg <- unique(master$trans_id)
 #for(i in 1:length(logg)){
-  #p[[i]] <- list()
-  #dat <- subset(master, uniq==logg[i])
+ # p[[i]] <- list()
+  #dat <- subset(master, trans_id==logg[i])
   #p[[i]][[1]] <- ggplot(dat, aes(datetime,value_cal)) + 
    # geom_line(color="blue", size=0.5) + 
     #geom_line(aes(x=datetime, y=value), color="black", size=0.5, data=dat)+
     #scale_y_continuous(limits=c(-2,30))+
     #labs(x="Date", y=expression("Temperature " (degree*C)~" "), color="Legend")+
     #scale_color_manual(values=colors)+
-    #ggtitle(paste(dat$uniq))+
+    #ggtitle(paste(dat$trans_id))+
     #theme(panel.background = element_blank(),
      #     legend.position = "top",
       #    axis.text = element_text(size=20, color='grey16'), 
@@ -305,7 +305,7 @@ master$datetime <- as.POSIXct(strptime(master$datetime, "%Y-%m-%d %H:%M:%S",tz='
 #}
 #This stores a separate ggplot for each transmitter in a list called 'p'. Used for building .pdf of all data
 
-mastercsv <- select(master, site, trans_id, date, time, value_cal, serial_num, logger_model, )
+mastercsv <- select(master, site, trans_id, date, time, value_cal, serial_num, logger_model)
 colnames(mastercsv) <- c("site","trans_id", "date","time","temp", "serial_num","logger_model")
 #write.csv(mastercsv, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_raw_working.csv",row.names = F)
 #DO NOT WRITE THIS CSV UNLESS ABSOLUTELY CERTAIN YOU WANT TO DO SO. THE SCRIPT "arousal_classification.R" adds two important columns, "behavior" and
