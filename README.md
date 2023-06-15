@@ -140,3 +140,8 @@ On the to-do list:
 2) Summarize the available infection data and pair with simulation output to see how they line up. 
 3) Plot barometer/psychrometer/camera/transmitter data together. 
 4) Re-visit the analyses I discussed with Kate/Joe on 4/19/2023 (in notebook)
+
+# 6/15/2023
+Started today by identifying an error in the transmitter data trimming code. It had previously trimmed each transmitter dataset to be >= or <= to the deployment and recovery date, respectively, which is an error because we want to trim away the deployment/recovery days. I re-ran that script and re-compiled the transmitter_working.csv and behavioral summary datasets. This also solved the issue from yesterday in which the behavioral metrics and their distributions seemed to change. Now it looks pretty much identical to how it did. 
+
+I also started building summaries of the available infection data, including a table of the numbers of samples taken for each site-season and, of those, how many we have received data for. Finished the day by creating jitter and density plots of early and late hibernation pathogen load values from the data available. 

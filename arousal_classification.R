@@ -30,7 +30,7 @@ master$behavior[is.na(master$behavior)] <- "Torpor"
 #to (i+1)+1.0, it additionally is classified as part of the arousal event. The below code runs the loop twice, meaning that the two datapoints
 #immediately before and after the arousal can be classified as part of that arousal if they meet the above conditions. 
 
-x<-3
+x<-1
 start.time<-Sys.time()
 repeat{
   print(x)
@@ -39,11 +39,11 @@ repeat{
     else{if(master[i,10]=="Torpor" & master[i-1,10]=="Arousal" & master[i,5] >= (master[i+1,5]+1)) {master[i,10]<-"Arousal"}
       else{master[i,10]<-master[i,10]}}}
     else{master[i,10] <- "Torpor"}}
-  if(x==6){break}
+  if(x==3){break}
 }
 end.time<-Sys.time()
 time.taken<-end.time-start.time;time.taken
-#This chunk takes about 4 hours to run. Modify the x== argument to run the loop more times. The number of times it will run will be equal to x-1
+#This chunk takes about 20 min to run if x==3. Modify the x== argument to run the loop more times. The number of times it will run will be equal to x-1
 
 master$event_num <- NA
 master[1,11] <- 1
@@ -110,15 +110,27 @@ tr.sum$mean.torpor.temp <- mean.torpor.temps$mean.torpor.temp[match(tr.sum$trans
 
 #write.csv(tr.sum, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv", row.names=F)
 
-p1<-master %>%
-  mutate(c=1) %>%
-  group_by(site, logger_model, trans_id) %>%
-  mutate(max.date=max(date)) %>%
-  summarise(end_date = mean(max.date)) %>%
-  mutate(c=1) %>%
-  ungroup() %>%
-  group_by(site, logger_model, end_date) %>%
-  summarise(num_logg = sum(c))
+
+
+p <- list()
+logg <- unique(master$trans_id)
+for(i in 1:length(logg)){
+  p[[i]] <- list()
+  dat <- subset(master, trans_id==logg[i])
+  p[[i]][[1]] <- ggplot(dat, aes(datetime,temp, color=location2)) + 
+    geom_line(color="black")+
+    geom_point(alpha=0.9)+
+    scale_y_continuous(limits=c(-2,30))+
+    labs(x="Date", y=expression("Temperature " (degree*C)~" "))+
+    scale_color_manual(values=c("a"="red","b"="blue","c"="black"))+
+    ggtitle(paste(dat$trans_id))+
+    theme(panel.background = element_blank(),
+          legend.position = "none",
+          axis.text = element_text(size=20, color='grey16'), 
+          axis.title = element_text(size=25, color="grey16"),
+          axis.ticks = element_line(size=0.8, color="grey57"),
+          panel.border = element_rect(colour = "grey57", fill=NA, size=0.8))
+}
   
 #### Attempting to classify movements and locations #####
 ## THE BELOW CHUNK OF CODE ASSIGNS 'LOCATIONS' TO TORPOR EVENTS, ATTEMPTING TO CLASSIFY MOVEMENTS TO DIFFERENT SECTIONS. THIS IS AN IMPERFECT PROCESS AND CERTAINLY
@@ -155,12 +167,12 @@ logg <- unique(master$trans_id)
 for(i in 1:length(logg)){
   p[[i]] <- list()
   dat <- subset(master, trans_id==logg[i])
-  p[[i]][[1]] <- ggplot(dat, aes(datetime,temp, color=location2)) + 
+  p[[i]][[1]] <- ggplot(dat, aes(datetime,temp,color=behavior)) + 
     geom_line(color="black")+
     geom_point(alpha=0.9)+
     scale_y_continuous(limits=c(-2,30))+
     labs(x="Date", y=expression("Temperature " (degree*C)~" "))+
-    scale_color_manual(values=c("a"="red","b"="blue","c"="black"))+
+    scale_color_manual(values=c("Arousal"="red", "Torpor"="blue"))+
     ggtitle(paste(dat$trans_id))+
     theme(panel.background = element_blank(),
           legend.position = "none",

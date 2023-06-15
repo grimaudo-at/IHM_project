@@ -177,8 +177,6 @@ ind.summ$mean.d.torpor.temp.unweighted <- mean.d.torpor.temps.unweighted$mean.d.
 #Looping this data into the individual summary dataframe. 
 
 
-
-
 #Now constructing the deviations from first torpor temp metric:
 
 first.torpor.temps <- dat %>%
@@ -220,7 +218,9 @@ ind.summ$mean.temp.dev.first.torpor.unweighted <- mean.temp.dev.first.torpor.unw
 
 dis.dat.master <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_5JUN2023.csv")
 #This is the disease data for bats in this study available as of the 5th of June, 2023. This dataset does not include all infection
-#data that will ultimately be available, as Jeff Foster et al. are still processing/correcting samples. 
+#data that will ultimately be available, as Jeff Foster et al. are still processing/correcting samples. If the mean_gdL value
+#is NA, the sample has not yet been processed and we haven't yet received data back. 
+
 trans_meta<- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_metadata.csv")
 #this dataframe doesn't have any infection data. That will have to be incorporated later once it's available. 
 
@@ -244,8 +244,13 @@ bad.bands<-filter(bad.bands, band_early != band_late)
 #These are inconsistencies between early and late hibernation in the band # recorded for a bat with the same trans_id. 
 #The two bats in South Lake had lost their bands (but not their transmitters) over the course of winter, so their late hibernation band was the one we replaced it with. 
 
-dis.df <- select(dis.early, trans_id, trans_model, trans_weight_g, site, section, state, band, swab_id, sex, mass, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2, true_mean_gdL)
+dis.df <- select(dis.early, trans_id, trans_model, trans_weight_g, site, section, state, band, swab_id, sex, mass, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2, mean_gdL)
 #This is going to be the dataframe with which I combine the ind.summ dataframe. 
+#I use the mean_gdL column instead of the mean_gdL column to preserve some information. In the mean_gdL column, if the sample was run but
+#no DNA was detected, it is given a value of 0 rather than NA. If the sample was not run yet (we don't have the data back), this value is
+#instead an NA. In the true_mean_gdL column, the value is NA in both of those cases, meaning I cannot distinguish between samples without
+#detectable DNA and samples that haven't been run yet. This is the only difference in the value of the two columns. Thus, I choose to 
+#preserve that information by using mean_gdL. 
 
 colnames(dis.df) <- c("trans_id", "trans.model", "trans.weight.g", "site", "section.early", "state", "band", "swab.id.early", "sex", "mass.early","uv.orange.early", 
                       "uv.right.early", "gd.wall.early","gd.wall2.early", "wing.score.early","wing.score2.early", "gdL.early")
@@ -259,7 +264,7 @@ dis.df$gd.wall.late <- dis.late$gd_wall[match(dis.df$trans_id, dis.late$trans_id
 dis.df$gd.wall2.late <- dis.late$gd_wall2[match(dis.df$trans_id, dis.late$trans_id)]
 dis.df$wing.score.late <- dis.late$wing_score[match(dis.df$trans_id, dis.late$trans_id)]
 dis.df$wing.score2.late <- dis.late$wing_score2[match(dis.df$trans_id, dis.late$trans_id)]
-dis.df$gdL.late <- dis.late$true_mean_gdL[match(dis.df$trans_id, dis.late$trans_id)]
+dis.df$gdL.late <- dis.late$mean_gdL[match(dis.df$trans_id, dis.late$trans_id)]
 #Matching in the disease data matching on transmitter ID. 
 
 dis.df$sex.late <- dis.late$sex[match(dis.df$trans_id, dis.late$trans_id)]
@@ -315,10 +320,30 @@ dis.df$d.mass.daily <- dis.df$d.mass/dis.df$sampling.duration.days
 dis.df$d.gdL <- dis.df$gdL.late - dis.df$gdL.early
 #Over-winter pathogen growth.
 
+min(dis.df$gdL.early[dis.df$gdL.early!=0],na.rm = T)
+#Need to transform all of the gdL values of 0 (no detectable fungus) to non-zero values by adding an extremely 
+#small constant to all values so that we can log-transform them. This constant will be on the same order of magnitude as the smallest non-zero load value. 
+#The value above was the smallest non-zero value in early hibernation. 
+dis.df$gdL.early <- dis.df$gdL.early + 1e-08
+dis.df$gdL.late <- dis.df$gdL.late + 1e-08
+#Constant added to both early and late hibernation load values. 
+
+dis.df$lgdL.early <- log10(dis.df$gdL.early)
+dis.df$lgdL.late <- log10(dis.df$gdL.late)
+#log-10 transformed early and late hibernation fungal loads 
+
+dis.df$d.lgdL <- log10(dis.df$d.gdL + 1)
+#This is the log10 change in gdL values from early to late hibernation. IMPORTANT: because many bats had a reduction in 
+#infection between early and late hibernation, resulting in negative d.gdL values, a constant of 1.0 had to be added
+#so that all values could be log-transformed. Therefore, in this d.lgdL value, values of 0.0 correspond to no change,
+#whereas values below/above 0.0 correspond to pathogne reduction/growth, respectively. 
 
 ## Can now match in all the transmitter summary data for each individual: 
 dis.df <- left_join(dis.df, ind.summ[,2:11], by="trans_id")
 #Merged. 
+
+
+
 
 #### Variation across sites in behavior metrics ####
 
@@ -392,7 +417,7 @@ mean.torpor.temp.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.torpor.temp.mea
   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
   labs(x=NULL, y="Mean Torpor Bout Temperature (Celsius)") +
-    scale_y_continuous(limits=c(0,12), breaks=seq(0,12,1), labels=c("0","1","2","3","4","5","6","7","8","9","10","11","12"))+
+    scale_y_continuous(limits=c(0,9), breaks=seq(0,12,1), labels=c("0","1","2","3","4","5","6","7","8","9","10","11","12"))+
   theme(
     axis.text.y = element_text(size=13),
     axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
@@ -514,6 +539,54 @@ mean.temp.dev.uw.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.uw.mea
 
 #### Variation across sites in disease metrics ####
 
+## Pathogen loads
+
+#Summary of pathogen load data availability:
+
+num.samples.taken <- dis.dat.master %>%
+  mutate(c=1) %>%
+  group_by(site, season) %>%
+  summarise(samples.taken = sum(c)) %>%
+  mutate(uniq = paste(site, season))
+#Table of number of swabs taken per site/season
+
+load.data.rec <- dis.dat.master %>%
+  filter(!is.na(mean_gdL)) %>%
+  mutate(c=1) %>%
+  group_by(site, season) %>%
+  summarise(data_received = sum(c)) %>%
+  mutate(uniq=paste(site, season))
+#Table of number of swabs for which data was received per site/season
+  
+load.data.summ <- num.samples.taken
+load.data.summ$load.data.received <- load.data.rec$data_received[match(load.data.summ$uniq, load.data.rec$uniq)]
+load.data.summ$load.data.received[is.na(load.data.summ$load.data.received)]<-0
+load.data.summ<-select(load.data.summ, site, season, samples.taken, load.data.received)
+load.data.summ$missing.samples <- load.data.summ$samples.taken - load.data.summ$load.data.received
+load.data.summ$prop.received <- load.data.summ$load.data.received/load.data.summ$samples.taken
+#Combined summary dataframe with number of samples missing and proportion received column. 
+
+
+
+#Now some density plots of pathogen load data by site/season
+
+dis.dat.master$lgdL<-log10(dis.dat.master$true_mean_gdL)
+#This is the log-transformed fungal load data that DOES NOT INCLUDE un-ran samples or samples without detectable fungus. 
+
+p <- list()
+site.uniq <- unique(dis.dat.master$site)
+for(i in 1:length(site.uniq)){
+  p[[i]] <- list()
+  dat <- subset(dis.dat.master, site==site.uniq[i])
+  p[[i]][[1]] <- ggMarginal((ggplot(aes(x=season, y=lgdL, color=season), data=dat) +
+                               geom_jitter(width=0.05)+
+                               scale_y_continuous(limits=c(-8,0))+
+                               annotate("text", x=0.9,y=0, label=paste(dat$site), size=6)), type="density", groupColour = TRUE, groupFill = TRUE)
+}
+#List of 7 plots (one for each site) with both a jitterplot and marginal density plot of early and late fungal loads (if available)
+
+
+
 
 ## Change in UV score:
 
@@ -528,7 +601,7 @@ d.uv.site.p <- ggMarginal((ggplot(aes(x=site, y=d.uv.mean), data=d.uv.summ) +
   geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, size=0.7) +
   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
-  labs(x=NULL, y="Change in Mean UV Score") +
+  labs(x=NULL, y="Change in Mean UV Score")+
   theme(
     axis.text.y = element_text(size=13),
     axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
