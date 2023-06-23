@@ -1,6 +1,6 @@
 library(tidyverse)
 
-t.dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_raw_working.csv") %>%
+t.dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv") %>%
   mutate(date = as.Date(date, format="%Y-%m-%d")) %>%
   filter(behavior=="Torpor" & !is.na(datetime)) %>%
   group_by(site, trans_id, date) %>%
@@ -8,15 +8,16 @@ t.dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/t
 #Reading in raw transmitter data and summarising the daily temperature of each, excluding arousal bouts. 
 
 
-i.dat.all <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_5JUN2023.csv")
+i.dat.all <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_5JUN2023.csv") %>%
   mutate(date = as.Date(date, format="%m/%d/%y"))
 #This dataframe contains all infection data from transmitter bats, both early and late sampling events. 
 
 i.dat <- i.dat.all %>% 
-  mutate(gdL.c = mean_gdL + 0.0000000001) %>%
+  mutate(gdL.c = mean_gdL + 10^((40-22.04942)/-3.34789)) %>%
   filter(season=="hiber_earl")
 #This contains only the early hibernation data. I added an extremely small constant to make all gd values of 0 a positive number that can be 
-#fed to the pathogen growth model. r * 0 always = 0, but bats need to become infected at some point (simulate times to infection?). 
+#fed to the pathogen growth model. This constant corresponds to a ct value of 40.
+#r * 0 always = 0, but bats need to become infected at some point (simulate times to infection?). 
 
 t.dat.fst <- t.dat %>%
   group_by(site, trans_id) %>%
@@ -65,14 +66,29 @@ dl<-ggplot(aes(x=date, y=log10(gdL)), data=t.dat)+
   facet_wrap(~trans_id);dl
 #Plot of all bats' pathogen growth. 
 
-pos.inf <-filter(t.dat, trans_id %in% t.dat.fst$trans_id[t.dat.fst$gdL>0.0000000001])
+pos.inf <-filter(t.dat, trans_id %in% t.dat.fst$trans_id[t.dat.fst$gdL>10^((40-22.04942)/-3.34789)])
 #Dataframe of only those bats with a detectable infection in early hibernation
 
+i.dat.all$true_mean_gdL.c[!is.na(i.dat.all$mean_gdL)]<- i.dat.all$mean_gdL[!is.na(i.dat.all$mean_gdL)] + 10^((40-22.04942)/-3.34789)
 dl2<-ggplot()+
-  geom_line(aes(x=date, y=log10(gdL)), data=pos.inf)+
-  geom_point(aes(x=date, y=log10(true_mean_gdL)), color="blue", data=i.dat.all[i.dat.all$trans_id %in% pos.inf$trans_id,]) +
+  geom_line(aes(x=date, y=log10(gdL)), data=t.dat)+
+  geom_point(aes(x=date, y=log10(true_mean_gdL.c)), color="blue", data=i.dat.all[i.dat.all$trans_id %in% t.dat$trans_id,]) +
   facet_wrap(~trans_id);dl2
 #Plot of only those bats with detectable early infection. Blue points are their true infection values. 
+
+#Let's just plot those individuals that have transmitter data for the whole study period:
+
+t.dat.lst <- t.dat %>%
+  group_by(site, trans_id) %>%
+  filter(date==max(date)) %>%
+  filter(date>"2022-03-01")
+#This dataframe contains the ending date and simulated pathogen load of those bats with transmitter data avaialbe for the 
+#entire study period. 
+
+dl3<-ggplot()+
+  geom_line(aes(x=date, y=log10(gdL), color=site), data=t.dat[t.dat$trans_id %in% unique(t.dat.lst$trans_id),])+
+  geom_point(aes(x=date, y=log10(true_mean_gdL.c)), color="blue", data=i.dat.all[i.dat.all$trans_id %in% t.dat.lst$trans_id,]) +
+  facet_wrap(~trans_id);dl3
 
 late.loads <- pos.inf %>%
   group_by(trans_id) %>%

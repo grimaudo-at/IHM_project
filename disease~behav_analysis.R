@@ -563,7 +563,6 @@ load.data.summ$load.data.received <- load.data.rec$data_received[match(load.data
 load.data.summ$load.data.received[is.na(load.data.summ$load.data.received)]<-0
 load.data.summ<-select(load.data.summ, site, season, samples.taken, load.data.received)
 load.data.summ$missing.samples <- load.data.summ$samples.taken - load.data.summ$load.data.received
-load.data.summ$prop.received <- load.data.summ$load.data.received/load.data.summ$samples.taken
 #Combined summary dataframe with number of samples missing and proportion received column. 
 
 
@@ -573,17 +572,36 @@ load.data.summ$prop.received <- load.data.summ$load.data.received/load.data.summ
 dis.dat.master$lgdL<-log10(dis.dat.master$true_mean_gdL)
 #This is the log-transformed fungal load data that DOES NOT INCLUDE un-ran samples or samples without detectable fungus. 
 
-p <- list()
+p.pl <- list()
 site.uniq <- unique(dis.dat.master$site)
 for(i in 1:length(site.uniq)){
-  p[[i]] <- list()
+  p.pl[[i]] <- list()
   dat <- subset(dis.dat.master, site==site.uniq[i])
-  p[[i]][[1]] <- ggMarginal((ggplot(aes(x=season, y=lgdL, color=season), data=dat) +
-                               geom_jitter(width=0.05)+
-                               scale_y_continuous(limits=c(-8,0))+
-                               annotate("text", x=0.9,y=0, label=paste(dat$site), size=6)), type="density", groupColour = TRUE, groupFill = TRUE)
+  p.pl[[i]][[1]] <- ggMarginal((ggplot(aes(x=lgdL, y=season, color=season), data=dat) +
+                               geom_jitter(height=0.05)+
+                               scale_x_continuous(limits=c(-8,0))+
+                               ggtitle(dat$site)), type="density", groupColour = TRUE, groupFill = TRUE)
 }
 #List of 7 plots (one for each site) with both a jitterplot and marginal density plot of early and late fungal loads (if available)
+
+#Combined plot: 
+
+dis.dat.master$season<-as.factor(dis.dat.master$season)
+p.pl2 <- ggplot(aes(x=site, y=lgdL, color=season, group=season), data=dis.dat.master) +
+  geom_point(position=position_dodge(width=0.7));p.pl2
+
+## Change in pathogen load: 
+
+non.infected <- filter(dis.df, gdL.early == 1.000000e-08 & gdL.late==1.000000e-08)
+#These 7 bats never showed any infection by qPCR. 
+
+d.lgdL.p <- ggplot(aes(x=d.lgdL, y=site, color=site), data=dis.df[dis.df$site!="BLACKBALL" & dis.df$site!="CP TUNNEL" &
+                                                                    !(dis.df$trans_id %in% non.infected$trans_id),]) +
+  geom_vline(xintercept = 0, linetype="dashed", color="black", size=1) + 
+  geom_jitter(height=0.05);d.lgdL.p
+
+
+
 
 
 
@@ -637,6 +655,8 @@ d.gd.site.p <- ggMarginal((ggplot(aes(x=site, y=d.gd.mean), data=d.gd.summ) +
     legend.position = "top"
   )), type="histogram", fill="darkgray", bins=8); d.gd.site.p
 #Plotting variation across sites. There are gray points here because these are bats that were re-captured but their transmitter wasn't working.
+
+
 
 
 
