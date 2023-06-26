@@ -33,11 +33,11 @@ for(i in 1:4) {
   dfs[[i]]$datetime = as.POSIXct(strptime(dfs[[i]]$datetime, "%m/%d/%y %I:%M:%S %p",tz='EST')) #Converts datetime into a POSIXct time object. Necessary for plotting. 
 }
 #^^^Dataframes 1-4
-for(i in 6:6) {
-  dfs[[i]]$site = file.sites[[i]] #Creates a new column, 'site,' in each dataframe with the site metadata extracted from its file pathway. 
-  dfs[[i]]$date = as.Date(str_extract(dfs[[i]]$datetime, "\\d{2}/\\d{2}/\\d{2}"), format="%m/%d/%y") #Separates the 'date' data from the 'datetime' column and makes it its own, formatted column
-  dfs[[i]]$datetime = as.POSIXct(strptime(dfs[[i]]$datetime, "%m/%d/%y %I:%M:%S %p",tz='EST')) #Converts datetime into a POSIXct time object. Necessary for plotting. 
-}
+
+dfs[[6]]$site = file.sites[[6]] #Creates a new column, 'site,' in each dataframe with the site metadata extracted from its file pathway. 
+dfs[[6]]$date = as.Date(str_extract(dfs[[6]]$datetime, "\\d{2}/\\d{2}/\\d{2}"), format="%m/%d/%y") #Separates the 'date' data from the 'datetime' column and makes it its own, formatted column
+dfs[[6]]$datetime = as.POSIXct(strptime(dfs[[6]]$datetime, "%m/%d/%y %I:%M:%S %p",tz='EST')) #Converts datetime into a POSIXct time object. Necessary for plotting. 
+
 #^^^Dataframe 6. 
 
 #The temperature data in Elroy Sparta is in Fahrenheit instead of Celsius, like the other dataframes. Need to correct that:
@@ -63,5 +63,14 @@ for(i in 1:length(dfs)) {
 
 master <- do.call("rbind", dfs)
 #Combined barometer database
+
+master$section <- NA
+#I need to add in the section metadata.
+master$section[master$site=="BLACKBALL"]<-"R5"
+master$section[master$site=="CP TUNNEL"]<-"1000"
+master$section[master$site=="ELROY SPARTA"]<-"B"
+master$section[master$site=="MEAD MINE"]<-"A"
+master$section[master$site=="SOUTH LAKE"]<-"C"
+master$section[master$site=="ZIMMERMAN"]<-3
 
 #write.csv(master, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/barometer_master.csv", row.names = F)

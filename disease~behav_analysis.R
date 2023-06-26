@@ -90,7 +90,7 @@ durations <- rbind(tt.durations, ta.durations, at.durations)
 ind.summ$sampling.duration.days <- as.numeric(durations$sampling.duration[match(ind.summ$trans_id, durations$trans_id)])
 #Bringing the sampling duration data into the individual summary dataframe
 
-ind.summ$arousal.freq.days <- as.numeric(ind.summ$sampling.duration.days/ind.summ$num.arousals)
+ind.summ$arousal.freq.days <- as.numeric(ind.summ$num.arousals/ind.summ$sampling.duration.days)
 #This is the arousal frequency or, on average, how many days separated arousal bouts. 
 
 
