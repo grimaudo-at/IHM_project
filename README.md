@@ -170,3 +170,15 @@ I looked back at my meeting notes with kate and joe from in April and came up wi
 6) Run a quick analysis to see if early hibernation mass predicts change in mass, because Kate asked. 
 
 Today, I accomplished 1 and 2. I also wrote a new .csv that contains data on where all the bats in this study with transmitters were captured in both early and late hibernation: Dropbox/Grimaudo_WNS_Project/Data/IHM Project/bat_section_summaries.csv. I also wrote a new R script that visualizes all of our available psychrometer/hobo/barometer data for each site/section during the study period in the sites. It is entitled "env_data_plots.R".
+
+# 6/27/2023
+
+Today I constructed three new microclimate/behavioral metrics in the 'disease~behav_analysis.R' script that were matched into ind.summ and dis.df dataframes. The code for these additional metrics, like that for the other independent variables, is under the "Building independent variables of interest" sub-section in the R script. Their descriptions are below:
+
+mean.temp.dev.warmest.sec: For each individual, I calculated the difference between their daily average transmitter temperature (torpor only) and the daily average temperature recorded by the psychrometer/prov2 in the warmest section in the same site. I then averaged all of these daily values for each bat. 
+
+mean.temp.dev.coldest.sec: Same as the first, but this time it's the difference from the average daily temperature recorded by the psychrometer/prov2 in the **coldest** section in the same site. 
+
+mean.temp.dev.origin.sec: Similar to the first two, but the difference is calculated from the daily average temperature recorded by the psychrometer/prov2 in the individual's origin section. "Origin section" refers to the section in which a bat was captured and sampled in early winter. 
+
+Because all of the sites differ a lot in their average temperatures and temperatures available, however, I wonder if it might be interesting to convert behavioral data or disease data to z-scores to standardize them? I will play around with that tomorrow. 

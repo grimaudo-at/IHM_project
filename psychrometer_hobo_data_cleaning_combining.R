@@ -15,21 +15,22 @@ dat.graphite$date <- as.Date(dat.graphite$date, format="%m/%d/%y")
 dat.graphite$vpd <- NA
 dat<-rbind(dat, dat.graphite)
 
-i.dat<-read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_5JUN2023.csv")
-sec.summ.bats <- i.dat %>% 
-  mutate(c=1) %>% 
-  group_by(site, season, section) %>% 
-  summarise(num.bats = sum(c))
 
 dat$section[dat$section=="B START"]<-"B"
 dat$section[dat$section=="NA"]<-NA
-sec.summ.env <- dat %>% 
-  mutate(c=1) %>% 
-  group_by(site, section) %>% 
-  summarise(env.dat.avail = mean(c))
-View(sec.summ.env)
-
-sec.summ.bats <- pivot_wider(data=sec.summ.bats, id_cols = c(site, section), names_from = season, values_from = num.bats)
+dat$section[dat$section=="FALSE"]<-"F"
 
 dat$logger_model[dat$logger_model=="psy-MX2303"]<-"MX2303"
+
+meta<-read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_metadata.csv") %>%
+  mutate(date_deployed = as.Date(date_deployed, format="%m/%d/%y"), date_retrieved=as.Date(date_retrieved, format="%m/%d/%y"))
+meta$site[meta$site=="GRAPHITE"] <- 'GRAPHITE MINE'
+meta$site[meta$site=="SOUTH LAKE"] <- 'SOUTH LAKE MINE'
+
+dat$date_deployed <- meta$date_deployed[match(dat$site, meta$site)]
+dat$date_retrieved <- meta$date_retrieved[match(dat$site, meta$site)]
+dat <- filter(dat, date >= (date_deployed+1) & date <= (date_retrieved-1))
+
+dat<-select(dat, "site","state","section","date","time","temp_1","temp_2","rh","vpd","logger_model")
+
 #write.csv(dat, "/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/psychrometer_hobo_data_26JUN2023.csv", row.names=F)

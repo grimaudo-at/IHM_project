@@ -5,6 +5,7 @@ library(emmeans)
 library(lmerTest)
 library(ggExtra)
 library(glmmTMB)
+library(betareg)
 
 dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv")
 #This dataframe contains a list and summary of every individual's arousal and torpor events. 
@@ -91,7 +92,7 @@ ind.summ$sampling.duration.days <- as.numeric(durations$sampling.duration[match(
 #Bringing the sampling duration data into the individual summary dataframe
 
 ind.summ$arousal.freq.days <- as.numeric(ind.summ$num.arousals/ind.summ$sampling.duration.days)
-#This is the arousal frequency or, on average, how many days separated arousal bouts. 
+#This is the arousal frequency or, on average, the proportion of the sampling time that passed until an arousal. 
 
 
 #Moving on to average torpor bout length.
@@ -102,21 +103,21 @@ tt.average.torpor.lengths <- dat %>%
   filter(trans_id %in% tt & behavior=="Torpor") %>%
   group_by(trans_id) %>%
   filter(event_num >1 & event_num < max(event_num)) %>%
-  summarise(mean.torpor.length.days = mean(event.length.days))
+  summarise(mean.torpor.length.days = mean(event.length.days, na.rm=T))
 #This dataframe contains the mean torpor bout length for the tt bats. 
 
 ta.average.torpor.lengths <- dat %>%
   filter(trans_id %in% ta & behavior=="Torpor") %>%
   group_by(trans_id) %>%
   filter(event_num >1) %>%
-  summarise(mean.torpor.length.days = mean(event.length.days))
+  summarise(mean.torpor.length.days = mean(event.length.days, na.rm=T))
 #This dataframe contains the mean torpor bout length for the ta bats. 
 
 at.average.torpor.lengths <- dat %>%
   filter(trans_id %in% at & behavior=="Torpor") %>%
   group_by(trans_id) %>%
   filter(event_num < max(event_num)) %>%
-  summarise(mean.torpor.length.days = mean(event.length.days))
+  summarise(mean.torpor.length.days = mean(event.length.days, na.rm=T))
 #This dataframe contains the mean torpor bout length for the at bats. 
 
 mean.torpor.length <- rbind(tt.average.torpor.lengths, ta.average.torpor.lengths, at.average.torpor.lengths)
@@ -214,6 +215,110 @@ ind.summ$mean.temp.dev.first.torpor.unweighted <- mean.temp.dev.first.torpor.unw
 #Bringing the weighted and unweighted averages into the individual summary dataframe. 
 
 
+
+
+# I also want to use the ambient temperature data recorded by psychrometers/pro v2 data loggers to construct a metric of an individual's microclimate deviation from 
+# available microclimate conditions. I'm going to do this in two ways: first, for each site, I'll identify the warmest/coldest available sections from psych/hobo data and
+# calculate a DAILY deviation from those dataset. Basically, for every day a bat's transmitter was recording data, I'll calculate a deviation from the average daily 
+# temperature recorded by the psych/hobo in the coldest and warmest sections and then average all of those daily deviation values for each bat. Second, I'll do the same
+# thing, but instead of using data from the coldest/warmest section, I'll use psych/hobo data from the section in which the bats were initially captured in early hibernation,
+# if available. 
+
+#First, need to read in the raw transmitter dataset and filter away any arousal data: 
+raw.trans.data <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_working.csv") %>%
+  filter(behavior != "Arousal") %>%
+  mutate(date = as.Date(date, format="%Y-%m-%d"))
+
+#As well as the psych/hobo dataset: 
+env.data <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/psychrometer_hobo_data_26JUN2023.csv") %>%
+  mutate(date = as.Date(date, format="%Y-%m-%d"))
+
+#Need daily average, non-arousal temperature values for each individual:
+trans.daily.temp.avgs <- raw.trans.data %>% 
+  group_by(site, trans_id, date) %>% 
+  summarise(temp.mean.daily = mean(temp))
+#This dataframe contains daily torpor temperature averages for each bat. 
+
+
+#Also need to loop in the data on the sections in which each bat was captured in early hibernation from the disease dataframe:
+dis.dat.master <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_5JUN2023.csv")
+#This is the disease data for bats in this study available as of the 5th of June, 2023. This dataset does not include all infection
+#data that will ultimately be available, as Jeff Foster et al. are still processing/correcting samples. If the mean_gdL value
+#is NA, the sample has not yet been processed and we haven't yet received data back. 
+
+dis.early <- filter(dis.dat.master, season=="hiber_earl") #This is the disease dataframe reduced to just early hibernation data.
+trans.daily.temp.avgs$origin.section <- dis.early$section[match(trans.daily.temp.avgs$trans_id, dis.early$trans_id)]
+#Each bat's first section, or the section in which it was captured in early hibernation, is now matched into the average daily temp dataframe
+
+#Now we can calculate the average daily temperatures for each logger. However, first, we need to remove data from a few loggers that didn't record the entire
+#sampling period. To do so, I'm first making a new column with a 'uniq.id' for each logger based on the site, section, and logger_model, as no section should
+#have more than one logger of the same model:
+env.data$uniq.id <- paste(env.data$site, env.data$section, env.data$logger_model)
+#Now, I'll summarise each logger's maximum date to identify those that didn't record data for the entire study period:
+env.data.ends <- env.data %>% 
+  group_by(uniq.id) %>% 
+  summarise(end.date=max(date)) %>%
+  filter(end.date >= "2022-03-01")
+length(unique(env.data$uniq.id)) - length(unique(env.data.ends$uniq.id))
+#There are four that prematurely ended recording. If it ended before March, it prematurely ended. The above dataframe contains the loggers that didn't prematurely end. 
+
+env.data <- filter(env.data, uniq.id %in% unique(env.data.ends$uniq.id))
+#This filters away all logger data from loggers that prematurely stopped logging. 
+
+env.data.daily.avg <- env.data %>%
+  group_by(uniq.id, site, section, logger_model, date) %>% 
+  summarise(temp.mean.daily = mean(temp_1))
+#This dataframe contains each logger's daily average temperatures. 
+
+#I now need to identify the coldest and warmest sections/loggers in each site: 
+overall.avg.logger.temps <- env.data %>% 
+  group_by(uniq.id, site) %>% 
+  summarise(temp.mean.overall = mean(temp_1), temp.median.overall = median(temp_1)) %>% 
+  ungroup() %>% 
+  group_by(site) %>%
+  mutate(temp.mean.max = max(temp.mean.overall), temp.mean.min = min(temp.mean.overall)) %>% 
+  filter(temp.mean.overall == temp.mean.max | temp.mean.overall == temp.mean.min) 
+#This dataframe contains the mean and median temperature values for the warmest and coldest section-loggers in each site. 
+
+env.data.daily.avg.warmest <- env.data.daily.avg %>% 
+  filter(uniq.id %in% unique(overall.avg.logger.temps$uniq.id[overall.avg.logger.temps$temp.mean.overall == overall.avg.logger.temps$temp.mean.max])) %>%
+  mutate(site.date = paste(site, date, sep=" ")) #this column will be used to match this temp data into the transmitter dataframe. 
+env.data.daily.avg.coldest <- env.data.daily.avg %>% 
+  filter(uniq.id %in% unique(overall.avg.logger.temps$uniq.id[overall.avg.logger.temps$temp.mean.overall == overall.avg.logger.temps$temp.mean.min])) %>%
+  mutate(site.date = paste(site, date, sep=" ")) #this column will be used to match this temp data into the transmitter dataframe. 
+#These two dataframes now only contain daily average temperature data from those loggers in warmest and coldest sections, respectively. 
+
+#Now we can create two new columns in trans.daily.temp.avgs that contain the daily average temps from the warmest and coldest sections:
+trans.daily.temp.avgs$site.date <- paste(trans.daily.temp.avgs$site, trans.daily.temp.avgs$date, sep=" ") #Matching on this column. 
+trans.daily.temp.avgs$temp.mean.daily.warmest.section <- env.data.daily.avg.warmest$temp.mean.daily[match(trans.daily.temp.avgs$site.date, env.data.daily.avg.warmest$site.date)]
+trans.daily.temp.avgs$temp.mean.daily.coldest.section <- env.data.daily.avg.coldest$temp.mean.daily[match(trans.daily.temp.avgs$site.date, env.data.daily.avg.coldest$site.date)]
+
+#Finally, I want to match in the logger data from each bat's origin section:
+trans.daily.temp.avgs$temp.mean.daily.origin.section <- env.data.daily.avg$temp.mean.daily[match((paste(trans.daily.temp.avgs$site, trans.daily.temp.avgs$origin.section, 
+                                                                                                        trans.daily.temp.avgs$date)),paste(env.data.daily.avg$site, 
+                                                                                                                                           env.data.daily.avg$section,
+                                                                                                                                           env.data.daily.avg$date))]
+#Of course, not all bats had logger data available from their origin section, so they may have NA values in that column. 
+
+#Now, we can calculate our temperature deviations of interest:
+trans.daily.temp.avgs$d.warmest <- trans.daily.temp.avgs$temp.mean.daily - trans.daily.temp.avgs$temp.mean.daily.warmest.section #The daily deviation from the warmest section's daily temperature
+trans.daily.temp.avgs$d.coldest <- trans.daily.temp.avgs$temp.mean.daily - trans.daily.temp.avgs$temp.mean.daily.coldest.section#The daily deviation from the coldest section's daily temperature
+trans.daily.temp.avgs$d.origin <- trans.daily.temp.avgs$temp.mean.daily - trans.daily.temp.avgs$temp.mean.daily.origin.section #The daily deviation from the origin section's daily temperature 
+
+#And now we will average these data for every individual:
+trans.daily.devs.summ <- trans.daily.temp.avgs %>% 
+  group_by(trans_id) %>% 
+  summarise(mean.temp.dev.warmest.sec = mean(d.warmest, na.rm=T), mean.temp.dev.coldest.sec = mean(d.coldest, na.rm=T), mean.temp.dev.origin.sec = mean(d.origin))
+
+#Match into ind.summ:
+ind.summ$mean.temp.dev.warmest.sec <- trans.daily.devs.summ$mean.temp.dev.warmest.sec[match(ind.summ$trans_id, trans.daily.devs.summ$trans_id)]
+ind.summ$mean.temp.dev.coldest.sec <- trans.daily.devs.summ$mean.temp.dev.coldest.sec[match(ind.summ$trans_id, trans.daily.devs.summ$trans_id)]
+ind.summ$mean.temp.dev.origin.sec <- trans.daily.devs.summ$mean.temp.dev.origin.sec[match(ind.summ$trans_id, trans.daily.devs.summ$trans_id)]
+
+
+
+
+
 #### Matching in disease data ####
 
 dis.dat.master <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_5JUN2023.csv")
@@ -222,7 +327,7 @@ dis.dat.master <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM 
 #is NA, the sample has not yet been processed and we haven't yet received data back. 
 
 trans_meta<- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_metadata.csv")
-#this dataframe doesn't have any infection data. That will have to be incorporated later once it's available. 
+#Transmitter metadata database
 
 dis.dat.master$date <- as.Date(dis.dat.master$date, format="%m/%d/%y")
 #Fixing date column.
@@ -320,12 +425,10 @@ dis.df$d.mass.daily <- dis.df$d.mass/dis.df$sampling.duration.days
 dis.df$d.gdL <- dis.df$gdL.late - dis.df$gdL.early
 #Over-winter pathogen growth.
 
-min(dis.df$gdL.early[dis.df$gdL.early!=0],na.rm = T)
 #Need to transform all of the gdL values of 0 (no detectable fungus) to non-zero values by adding an extremely 
-#small constant to all values so that we can log-transform them. This constant will be on the same order of magnitude as the smallest non-zero load value. 
-#The value above was the smallest non-zero value in early hibernation. 
-dis.df$gdL.early <- dis.df$gdL.early + 1e-08
-dis.df$gdL.late <- dis.df$gdL.late + 1e-08
+#small constant that corresponds to the 40CT qPCR cutoff value:
+dis.df$gdL.early <- dis.df$gdL.early + 10^((40-22.04942)/-3.34789)
+dis.df$gdL.late <- dis.df$gdL.late + 10^((40-22.04942)/-3.34789)
 #Constant added to both early and late hibernation load values. 
 
 dis.df$lgdL.early <- log10(dis.df$gdL.early)
@@ -339,7 +442,7 @@ dis.df$d.lgdL <- log10(dis.df$d.gdL + 1)
 #whereas values below/above 0.0 correspond to pathogne reduction/growth, respectively. 
 
 ## Can now match in all the transmitter summary data for each individual: 
-dis.df <- left_join(dis.df, ind.summ[,2:11], by="trans_id")
+dis.df <- left_join(dis.df, ind.summ[,2:14], by="trans_id")
 #Merged. 
 
 
@@ -352,6 +455,9 @@ dis.df$site <- factor(dis.df$site, levels = c("SOUTH LAKE MINE","GRAPHITE MINE",
 
 
 ## Arousal frequency
+
+ar.freq.m <- betareg(arousal.freq.days ~ site, data=dis.df, link="logit");summary(ar.freq.m)
+#Beta regression of arousal frequencies. 
 
 ar.freq.summ <- dis.df %>%
   group_by(site) %>%
@@ -405,6 +511,9 @@ mean.torpor.length.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.torpor.length
 
 ## Mean torpor temp
 
+mean.torpor.temp.m <- lm(mean.torpor.temp ~ site, data=dis.df);summary(mean.torpor.temp.m)
+#Model of site differences in mean torpor temperatures. 
+
 mean.torpor.temp.summ <- dis.df %>%
   group_by(site) %>%
   summarise(mean.torpor.temp.mean = mean(mean.torpor.temp, na.rm=T), mean.torpor.temp.sd = sd(mean.torpor.temp, na.rm=T)) %>%
@@ -433,6 +542,9 @@ mean.torpor.temp.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.torpor.temp.mea
 
 ## Mean change in mean torpor bout temperature
 
+mean.d.torpor.temp.weighted.m <- lm(mean.d.torpor.temp.weighted ~ site, data=dis.df);summary(mean.d.torpor.temp.weighted.m)
+#Model of change in torpor bout temperatures across sites (weighted)
+
 #Weighted first:
 mean.d.torpor.temp.w.summ <- dis.df %>%
   group_by(site) %>%
@@ -457,6 +569,10 @@ mean.d.torpor.temp.w.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.d.torpor.te
 #Plotted
 
 #Now unweighted:
+
+mean.d.torpor.temp.unweighted.m <- lm(mean.d.torpor.temp.unweighted ~ site, data=dis.df);summary(mean.d.torpor.temp.unweighted.m)
+#Model
+
 mean.d.torpor.temp.uw.summ <- dis.df %>%
   group_by(site) %>%
   summarise(mean.d.torpor.temp.uw.mean = mean(mean.d.torpor.temp.unweighted, na.rm=T), mean.d.torpor.temp.uw.sd = sd(mean.d.torpor.temp.unweighted, na.rm=T)) %>%
@@ -487,6 +603,9 @@ mean.d.torpor.temp.uw.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.d.torpor.t
 
 ## Mean deviation in mean torpor bout temperature from first torpor bout
 
+mean.temp.dev.w.m <- lm(mean.temp.dev.first.torpor.weighted ~ site, data=dis.df);summary(mean.temp.dev.w.m)
+#Model of deviation in torpor bout temperatures from first torpor bout across sites. 
+
 #Weighted first:
 mean.temp.dev.w.summ <- dis.df %>%
   group_by(site) %>%
@@ -512,6 +631,10 @@ mean.temp.dev.w.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.w.mean)
 #Plotted
 
 #Now unweighted:
+
+mean.temp.dev.uw.m <- lm(mean.temp.dev.first.torpor.unweighted ~ site, data=dis.df);summary(mean.temp.dev.uw.m)
+#Model
+
 mean.temp.dev.uw.summ <- dis.df %>%
   group_by(site) %>%
   summarise(mean.temp.dev.uw.mean = mean(mean.temp.dev.first.torpor.unweighted, na.rm=T), mean.temp.dev.uw.sd = sd(mean.temp.dev.first.torpor.unweighted, na.rm=T)) %>%
@@ -535,6 +658,101 @@ mean.temp.dev.uw.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.uw.mea
   )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.uw.site.p
 #Plotted
 
+
+
+
+
+#Now looking at average daily temperature deviation from the average daily temperature of the warmest section:
+
+mean.temp.dev.warmest.sec.m <- lm(mean.temp.dev.warmest.sec ~ site, data=dis.df);summary(mean.temp.dev.warmest.sec.m)
+
+mean.temp.dev.warmest.sec.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.temp.dev.warmest.sec.mean = mean(mean.temp.dev.warmest.sec, na.rm=T), mean.temp.dev.warmest.sec.sd = sd(mean.temp.dev.warmest.sec, na.rm=T)) %>%
+  mutate(hi.sd = mean.temp.dev.warmest.sec.mean + mean.temp.dev.warmest.sec.sd, lo.sd = mean.temp.dev.warmest.sec.mean - mean.temp.dev.warmest.sec.sd)
+#Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
+
+mean.temp.dev.warmest.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.warmest.sec.mean), data=mean.temp.dev.warmest.sec.summ) +
+                                         geom_jitter(aes(x=site, y=mean.temp.dev.warmest.sec, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+                                         geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+                                         geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+                                         scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+                                         labs(x=NULL, y="Mean Daily Temp Deviation \n from Warmest Section") +
+                                         theme(
+                                           axis.text.y = element_text(size=13),
+                                           axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+                                           axis.title = element_text(size=15),
+                                           plot.margin=margin(10,10,0,30),
+                                           legend.title = element_text(size=13),
+                                           legend.text = element_text(size=13),
+                                           legend.position = "top"
+                                         )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.warmest.sec.site.p
+#Plotted
+
+
+
+
+
+
+#Now looking at average daily temperature deviation from the average daily temperature of the coldest section:
+
+mean.temp.dev.coldest.sec.m <- lm(mean.temp.dev.coldest.sec ~ site, data=dis.df);summary(mean.temp.dev.coldest.sec.m)
+
+mean.temp.dev.coldest.sec.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.temp.dev.coldest.sec.mean = mean(mean.temp.dev.coldest.sec, na.rm=T), mean.temp.dev.coldest.sec.sd = sd(mean.temp.dev.coldest.sec, na.rm=T)) %>%
+  mutate(hi.sd = mean.temp.dev.coldest.sec.mean + mean.temp.dev.coldest.sec.sd, lo.sd = mean.temp.dev.coldest.sec.mean - mean.temp.dev.coldest.sec.sd)
+#Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
+
+mean.temp.dev.coldest.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.coldest.sec.mean), data=mean.temp.dev.coldest.sec.summ) +
+                                                  geom_jitter(aes(x=site, y=mean.temp.dev.coldest.sec, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+                                                  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+                                                  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+                                                  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+                                                  labs(x=NULL, y="Mean Daily Temp Deviation \n from Coldest Section") +
+                                                  theme(
+                                                    axis.text.y = element_text(size=13),
+                                                    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+                                                    axis.title = element_text(size=15),
+                                                    plot.margin=margin(10,10,0,30),
+                                                    legend.title = element_text(size=13),
+                                                    legend.text = element_text(size=13),
+                                                    legend.position = "top"
+                                                  )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.coldest.sec.site.p
+#Plotted
+
+
+
+
+
+
+
+#Now looking at average daily temperature deviation from the average daily temperature of the origin section:
+
+mean.temp.dev.origin.sec.m <- lm(mean.temp.dev.origin.sec ~ site, data=dis.df);summary(mean.temp.dev.origin.sec.m)
+
+mean.temp.dev.origin.sec.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.temp.dev.origin.sec.mean = mean(mean.temp.dev.origin.sec, na.rm=T), mean.temp.dev.origin.sec.sd = sd(mean.temp.dev.origin.sec, na.rm=T)) %>%
+  mutate(hi.sd = mean.temp.dev.origin.sec.mean + mean.temp.dev.origin.sec.sd, lo.sd = mean.temp.dev.origin.sec.mean - mean.temp.dev.origin.sec.sd)
+#Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
+
+mean.temp.dev.origin.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.origin.sec.mean), data=mean.temp.dev.origin.sec.summ) +
+                                                  geom_jitter(aes(x=site, y=mean.temp.dev.origin.sec, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+                                                  geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+                                                  geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+                                                  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+                                                  labs(x=NULL, y="Mean Daily Temp Deviation \n from Origin Section") +
+                                                  theme(
+                                                    axis.text.y = element_text(size=13),
+                                                    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+                                                    axis.title = element_text(size=15),
+                                                    plot.margin=margin(10,10,0,30),
+                                                    legend.title = element_text(size=13),
+                                                    legend.text = element_text(size=13),
+                                                    legend.position = "top"
+                                                  )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.origin.sec.site.p
+#Plotted
 
 
 #### Variation across sites in disease metrics ####
