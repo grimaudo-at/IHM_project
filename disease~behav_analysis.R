@@ -349,18 +349,19 @@ bad.bands<-filter(bad.bands, band_early != band_late)
 #These are inconsistencies between early and late hibernation in the band # recorded for a bat with the same trans_id. 
 #The two bats in South Lake had lost their bands (but not their transmitters) over the course of winter, so their late hibernation band was the one we replaced it with. 
 
-dis.df <- select(dis.early, trans_id, trans_model, trans_weight_g, site, section, state, band, swab_id, sex, mass, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2, mean_gdL)
+dis.df <- select(dis.early, trans_id, trans_model, trans_weight_g, site, section, state, band, swab_id, temp, sex, mass, uv_orange, uv_right, gd_wall, gd_wall2, wing_score, wing_score2, mean_gdL)
 #This is going to be the dataframe with which I combine the ind.summ dataframe. 
-#I use the mean_gdL column instead of the mean_gdL column to preserve some information. In the mean_gdL column, if the sample was run but
+#I use the mean_gdL column instead of the true_mean_gdL column to preserve some information. In the mean_gdL column, if the sample was run but
 #no DNA was detected, it is given a value of 0 rather than NA. If the sample was not run yet (we don't have the data back), this value is
 #instead an NA. In the true_mean_gdL column, the value is NA in both of those cases, meaning I cannot distinguish between samples without
 #detectable DNA and samples that haven't been run yet. This is the only difference in the value of the two columns. Thus, I choose to 
 #preserve that information by using mean_gdL. 
 
-colnames(dis.df) <- c("trans_id", "trans.model", "trans.weight.g", "site", "section.early", "state", "band", "swab.id.early", "sex", "mass.early","uv.orange.early", 
+colnames(dis.df) <- c("trans_id", "trans.model", "trans.weight.g", "site", "section.early", "state", "band", "swab.id.early", "temp.early","sex", "mass.early","uv.orange.early", 
                       "uv.right.early", "gd.wall.early","gd.wall2.early", "wing.score.early","wing.score2.early", "gdL.early")
 #Re-naming columns so that their early disease information is identifiable.
 
+dis.df$temp.late <- dis.late$temp[match(dis.df$trans_id, dis.late$trans_id)]
 dis.df$mass.late <- dis.late$mass[match(dis.df$trans_id, dis.late$trans_id)]
 dis.df$swab.id.late <- dis.late$swab_id[match(dis.df$trans_id, dis.late$trans_id)]
 dis.df$uv.orange.late <- dis.late$uv_orange[match(dis.df$trans_id, dis.late$trans_id)]
@@ -417,18 +418,13 @@ dis.df$d.wing.score <- dis.df$wing.score.mean.late - dis.df$wing.score.mean.earl
 dis.df$d.mass <- dis.df$mass.late - dis.df$mass.early
 #Change in mass over course of hibernation.
 
-dis.df$sampling.duration.days <- ind.summ$sampling.duration.days[match(dis.df$trans_id, ind.summ$trans_id)]
-dis.df$d.mass.daily <- dis.df$d.mass/dis.df$sampling.duration.days
-#This is a measure of weight change that corrects for differences in the sampling interval, since bats from all sites were not sampled at the same time.
-#it is a "daily weight loss" metric. 
-
 dis.df$d.gdL <- dis.df$gdL.late - dis.df$gdL.early
 #Over-winter pathogen growth.
 
-#Need to transform all of the gdL values of 0 (no detectable fungus) to non-zero values by adding an extremely 
+#Need to transform all of the gdL values of 0 (no detectable fungus) to non-zero values by assigning them an extremely 
 #small constant that corresponds to the 40CT qPCR cutoff value:
-dis.df$gdL.early <- dis.df$gdL.early + 10^((40-22.04942)/-3.34789)
-dis.df$gdL.late <- dis.df$gdL.late + 10^((40-22.04942)/-3.34789)
+dis.df$gdL.early[dis.df$gdL.early==0] <- 10^((40-22.04942)/-3.34789)
+dis.df$gdL.late[dis.df$gdL.late==0] <- 10^((40-22.04942)/-3.34789)
 #Constant added to both early and late hibernation load values. 
 
 dis.df$lgdL.early <- log10(dis.df$gdL.early)
@@ -441,10 +437,45 @@ dis.df$d.lgdL <- log10(dis.df$d.gdL + 1)
 #so that all values could be log-transformed. Therefore, in this d.lgdL value, values of 0.0 correspond to no change,
 #whereas values below/above 0.0 correspond to pathogne reduction/growth, respectively. 
 
+#I want to construct another version of lgdL.early, lgdL.late, and d.lgdL. Because there are bats that didn't have detectable infection either in early or late
+#hibernation, I want to construct a metric of each of those variables that assigns NA values to those bats. I can identify them based on their load values, 
+#which will again be equivalent to the 40ct threshold value. 
+dis.df$lgdL.early.no.neg <- dis.df$lgdL.early
+dis.df$lgdL.early.no.neg[dis.df$lgdL.early == log10(10^((40-22.04942)/-3.34789))] <- NA #This column is early load values, with negative samples assigned NA
+dis.df$lgdL.late.no.neg <- dis.df$lgdL.late
+dis.df$lgdL.late.no.neg[dis.df$lgdL.late == log10(10^((40-22.04942)/-3.34789))] <- NA #This column is late load values, with negative samples assigned NA
+
+non.infected <- filter(dis.df, gdL.early == 10^((40-22.04942)/-3.34789) & gdL.late==10^((40-22.04942)/-3.34789))
+#These 7 bats never showed any infection by qPCR.
+dis.df$d.lgdL.no.neg <- dis.df$d.lgdL
+dis.df$d.lgdL.no.neg[dis.df$trans_id %in% unique(non.infected$trans_id)] <- NA #This column is change in pathogen load values, with NA's assigned to bats 
+#that never had detectable infection in either early or late hibernation. 
+
+
+#Before we can merge, we need to correct the d.mass and d.lgdL metrics for the sampling period (NOT THE SAME AS SAMPLING INTERVAL IN IND.SUMM!!).
+#First, let's grab the sampling date metadata from the transmitter meta-database: 
+sampling.dates <- trans_meta %>%
+  mutate(date_deployed = as.Date(date_deployed, format="%m/%d/%y"), date_retrieved=as.Date(date_retrieved, format="%m/%d/%y")) %>% 
+  group_by(site) %>% 
+  summarise(early_hib_date = mean(date_deployed), late_hib_date = mean(date_retrieved)) %>%
+  mutate(sampling.period = as.numeric(late_hib_date - early_hib_date))
+sampling.dates$site[sampling.dates$site=="SOUTH LAKE"] <- 'SOUTH LAKE MINE'
+sampling.dates$site[sampling.dates$site=="GRAPHITE"] <- 'GRAPHITE MINE'
+#This dataframe contains the dates each site was sampled as well as the time between. Also had to fix some naming inconsistencies. 
+
+dis.df$days.between.samples = sampling.dates$sampling.period[match(dis.df$site, sampling.dates$site)]
+#Matching in that sampling period metadata
+
+dis.df$d.mass.daily <- dis.df$d.mass/dis.df$days.between.samples
+#This change in mass metric is now on the daily scale, correcting for differences in sampling period. 
+dis.df$d.lgdL.daily = dis.df$d.lgdL/dis.df$days.between.samples
+#This is the pathogen growth rate corrected for sampling interval, with the 40ct bats. 
+dis.df$d.lgdL.no.neg.daily = dis.df$d.lgdL.no.neg/dis.df$days.between.samples
+#This is the pathogen growth rate corrected for sampling interval, without the 40ct bats. 
+
 ## Can now match in all the transmitter summary data for each individual: 
 dis.df <- left_join(dis.df, ind.summ[,2:14], by="trans_id")
 #Merged. 
-
 
 
 
@@ -673,7 +704,7 @@ mean.temp.dev.warmest.sec.summ <- dis.df %>%
 #Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
 
 mean.temp.dev.warmest.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.warmest.sec.mean), data=mean.temp.dev.warmest.sec.summ) +
-                                         geom_jitter(aes(x=site, y=mean.temp.dev.warmest.sec, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+                                         geom_jitter(aes(x=site, y=mean.temp.dev.warmest.sec, color=mean.torpor.temp), data=dis.df, size=2.5, height=0, width=0.15) +
                                          geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
                                          geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
                                          scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
@@ -689,7 +720,7 @@ mean.temp.dev.warmest.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.d
                                          )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.warmest.sec.site.p
 #Plotted
 
-
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/daily_deviation_warmest_section.PNG",mean.temp.dev.warmest.sec.site.p,scale=3,width=8,height=8,units="cm",dpi=600)
 
 
 
@@ -705,7 +736,7 @@ mean.temp.dev.coldest.sec.summ <- dis.df %>%
 #Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
 
 mean.temp.dev.coldest.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.coldest.sec.mean), data=mean.temp.dev.coldest.sec.summ) +
-                                                  geom_jitter(aes(x=site, y=mean.temp.dev.coldest.sec, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+                                                  geom_jitter(aes(x=site, y=mean.temp.dev.coldest.sec, color=mean.torpor.temp), data=dis.df, size=2.5, height=0, width=0.15) +
                                                   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
                                                   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
                                                   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
@@ -720,6 +751,8 @@ mean.temp.dev.coldest.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.d
                                                     legend.position = "top"
                                                   )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.coldest.sec.site.p
 #Plotted
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/daily_deviation_coldest_section.PNG",mean.temp.dev.coldest.sec.site.p,scale=3,width=8,height=8,units="cm",dpi=600)
 
 
 
@@ -738,7 +771,7 @@ mean.temp.dev.origin.sec.summ <- dis.df %>%
 #Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
 
 mean.temp.dev.origin.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.dev.origin.sec.mean), data=mean.temp.dev.origin.sec.summ) +
-                                                  geom_jitter(aes(x=site, y=mean.temp.dev.origin.sec, color=mean.torpor.temp), data=dis.df, size=2, height=0, width=0.2) +
+                                                  geom_jitter(aes(x=site, y=mean.temp.dev.origin.sec, color=mean.torpor.temp), data=dis.df, size=2.5, height=0, width=0.15) +
                                                   geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
                                                   geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
                                                   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
@@ -753,6 +786,9 @@ mean.temp.dev.origin.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.de
                                                     legend.position = "top"
                                                   )), type="histogram", fill="darkgray", bins=15); mean.temp.dev.origin.sec.site.p
 #Plotted
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/daily_deviation_origin_section.PNG",mean.temp.dev.origin.sec.site.p,scale=3,width=8,height=8,units="cm",dpi=600)
+
 
 
 #### Variation across sites in disease metrics ####
@@ -805,19 +841,36 @@ for(i in 1:length(site.uniq)){
 #Combined plot: 
 
 dis.dat.master$season<-as.factor(dis.dat.master$season)
-p.pl2 <- ggplot(aes(x=site, y=lgdL, color=season, group=season), data=dis.dat.master) +
-  geom_point(position=position_dodge(width=0.7));p.pl2
+p.pl2 <- ggplot(aes(x=site, y=lgdL, fill=season, group=season), data=dis.dat.master) +
+  geom_point(position=position_dodge(width=0.5), size=2, shape=21, alpha=0.5, color="black")+
+  scale_fill_manual(values=c("blue","red"), name="Season")+
+  labs(x="Site", y="Pathogen load")+
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=19),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top");p.pl2
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/load~site+season.PNG",p.pl2,scale=3,width=8,height=6,units="cm",dpi=600)
 
 ## Change in pathogen load: 
-
-non.infected <- filter(dis.df, gdL.early == 1.000000e-08 & gdL.late==1.000000e-08)
-#These 7 bats never showed any infection by qPCR. 
-
-d.lgdL.p <- ggplot(aes(x=d.lgdL, y=site, color=site), data=dis.df[dis.df$site!="BLACKBALL" & dis.df$site!="CP TUNNEL" &
+d.lgdL.p <- ggplot(aes(x=d.lgdL.no.neg.daily, y=site, fill=site), data=dis.df[dis.df$site!="BLACKBALL" & dis.df$site!="CP TUNNEL" &
                                                                     !(dis.df$trans_id %in% non.infected$trans_id),]) +
   geom_vline(xintercept = 0, linetype="dashed", color="black", size=1) + 
-  geom_jitter(height=0.05);d.lgdL.p
-
+  geom_jitter(height=0.18,size=2, alpha=0.7, shape=21, color="black")+
+  labs(x="Daily Pathogen Growth", y="Site")+
+  theme(
+    axis.text.y = element_text(size=13),
+    axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+    axis.title = element_text(size=19),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13),
+    legend.position = "top");d.lgdL.p
+#Recall that this uses the d.lgdL.no.neg variable, which does not contain pathogen growth data from bats that did not have detectable infection
+#in either early or late hibernation. 
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/path_growth~site.PNG",d.lgdL.p,scale=3,width=10,height=5,units="cm",dpi=600)
 
 
 
@@ -1063,7 +1116,8 @@ mean.point.temps.p2 <- (ggplot(aes(x=site, y=mean.point.temp, group=season), dat
                            legend.text = element_text(size=13),
                            legend.position = "top"
                          ));mean.point.temps.p2
-
+### THIS PLOT REALLY NEEDS TO BE TAKEN WITH A GRAIN OF SALT BECAUSE MOST OF THE TRANSMTITERS STOPPED RECORDING DATA IN MID-FEBRUARY, 
+### WHEREAS LATE HIBERNATION POINT TEMPERATURE MEASURMENTS WERE TAKEN BETWEEN EARLY MARCH AND APRIL. 
 
 
 
@@ -1071,7 +1125,7 @@ mean.point.temps.p2 <- (ggplot(aes(x=site, y=mean.point.temp, group=season), dat
 
 ## Arousal frequency: 
 
-m.arousal.freq.temp <- glmer(arousal.freq.days ~ mean.torpor.temp + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df); summary(m.arousal.freq.temp)
+m.arousal.freq.temp <- glmer(arousal.freq.days ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df); summary(m.arousal.freq.temp)
 #This needs to be modeled as an exponential distribution because it is time between events. Dispersion=1 should make it exponential distribution. 
 plot(dis.df$arousal.freq.days ~ dis.df$mean.torpor.temp)
 #Doesn't seem like there's any relationship. 
@@ -1081,6 +1135,7 @@ plot(dis.df$arousal.freq.days ~ dis.df$mean.torpor.temp)
 
 m.torpor.length.temp <- glmer(mean.torpor.length.days ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df); summary(m.torpor.length.temp, dispersion=1)
 #This needs to be modeled as an exponential distribution because it is time between events. Dispersion=1 should make it exponential distribution. 
+
 plot(dis.df$mean.torpor.length.days ~ dis.df$mean.torpor.temp)
 #Doesn't seem like there's any relationship. 
 
@@ -1192,29 +1247,32 @@ dis.df$d.mass.daily.p <- -1*dis.df$d.mass.daily
 
 ## Arousal frequency
 
-m.dmass1 <- glmmTMB(d.mass.daily.p ~ arousal.freq.days + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass1)
-#crossed random effects. 
+m.dmass1 <- glmmTMB(d.mass.daily.p ~ arousal.freq.days*mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass1)
+#random effect of site. 
 plot(allEffects(m.dmass1))
 plot(dis.df$d.mass.daily.p ~ dis.df$arousal.freq.days)
 #Pretty clear negative negative relationship between arousal frequency and the amount of mass lost. 
 #In other words, if you woke up more frequently, you lost more mass. 
 
-m.dmass1.df <- as.data.frame(expand.grid(arousal.freq.days=seq(5,25,0.01), site=unique(dis.df$site), sex=unique(dis.df$sex)))
+
+m.dmass1.df <- as.data.frame(expand.grid(arousal.freq.days=seq(0.04, 0.16, 0.001), mean.torpor.temp=c(1,3,5,7,9), site=unique(dis.df$site)))
 m.dmass1.yhat <- as.data.frame(predict(m.dmass1, m.dmass1.df, se.fit=T, re.form=NA, type='response'))
 m.dmass1.yhat.fin <- cbind(m.dmass1.df, m.dmass1.yhat)
 m.dmass1.yhat.fin <- m.dmass1.yhat.fin %>%
-  group_by(arousal.freq.days) %>%
+  group_by(arousal.freq.days, mean.torpor.temp) %>%
   summarise(model.fit = mean(fit), model.se = mean(se.fit)) %>%
   mutate(lo.ci = model.fit-(1.96*model.se), hi.ci = model.fit + (1.96*model.se))
 #This dataframe contains model predictions and 95% confidence intervals. 
 
-p.dmass1 <- ggplot(aes(x=arousal.freq.days, y=model.fit), data=m.dmass1.yhat.fin) +
-  geom_ribbon(aes(x=arousal.freq.days, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
-  geom_point(aes(x=arousal.freq.days, y=d.mass.daily.p, fill=mean.torpor.temp, shape=sex), size=3, color="black", data=dis.df)+
-  geom_line(color="black", size=1.5)+
+
+p.dmass1 <- ggplot(aes(x=arousal.freq.days, y=model.fit, color=mean.torpor.temp, group=mean.torpor.temp), data=m.dmass1.yhat.fin) +
+  #geom_ribbon(aes(x=arousal.freq.days, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
+  geom_point(aes(x=arousal.freq.days, y=d.mass.daily.p, fill=mean.torpor.temp, shape=sex), size=5, alpha=0.8, color="black", data=dis.df)+
+  geom_line(size=1.5)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature", guide = F)+
   scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
   scale_shape_manual(values=c(21,24), name="Sex")+
-  labs(x="Arousal Frequency (days)", y="Daily Mass Loss (grams)")+
+  labs(x="Arousal Frequency (Arousals per Day)", y="Daily Mass Loss (grams)")+
   theme(
     axis.text = element_text(size=13),
     axis.title = element_text(size=19),
@@ -1223,11 +1281,7 @@ p.dmass1 <- ggplot(aes(x=arousal.freq.days, y=model.fit), data=m.dmass1.yhat.fin
     legend.text = element_text(size=13)
   );p.dmass1
 #Plot. 
-
-
-m.dmass2 <- glmer(d.mass.daily.p ~ log10(arousal.freq.days)*mean.torpor.temp + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass2)
-#Convergence issues when using non-transformed arousal frequency value. I don't know if logging that metric
-#is appropriate, but it allows model to run. Suggests no association. 
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/mass_loss~arousal_freq*mean_torpor_temp.PNG",p.dmass1,scale=3,width=10,height=6,units="cm",dpi=600)
 
 
 
@@ -1235,9 +1289,49 @@ m.dmass2 <- glmer(d.mass.daily.p ~ log10(arousal.freq.days)*mean.torpor.temp + (
 
 ## Mean torpor temperature
 
-m.dmass3 <- glmmTMB(d.mass.daily.p ~ mean.torpor.temp + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass3)
+m.dmass3 <- glmmTMB(d.mass.daily.p ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass3)
 plot(dis.df$d.mass.daily.p ~ dis.df$mean.torpor.temp)
 #Appears to be no association. 
+
+p.early.mass0<- ggplot() +
+  geom_point(aes(x=mean.torpor.temp, y=d.mass.daily.p, fill=site, shape=sex), size=5, alpha=.8, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  #scale_x_continuous(limits=c(0,0.16))+
+  labs(x="Mean Torpor Bout Temperature", y="Mass Loss (grams)")+
+  #scale_y_continuous(limits=c(-0.0015, 0.0005), breaks=c(-0.0015, -0.001,-0.0005,0,0.0005), labels=c("-0.0015", "-0.001","-0.0005","0","0.0005"))+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p.early.mass0
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/mass_loss~mean_torpor_temp.PNG",p.early.mass0,scale=3,width=10,height=6,units="cm",dpi=600)
+
+#Was early mass associated with temperature?
+m.early.mass1 <- lmer(mass.early ~ mean.torpor.temp + (1|site), data=dis.df);summary(m.early.mass1)
+plot(dis.df$mass.early~dis.df$mean.torpor.temp)
+m.early.mass2 <- glmer(mass.early ~ temp.early + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.early.mass2)
+plot(allEffects(m.early.mass2))
+plot(dis.df$mass.early~dis.df$temp.early)
+#These models suggest no relationship. 
+
+p.early.mass1<- ggplot() +
+  geom_point(aes(x=temp.early, y=mass.early, fill=site, shape=sex), size=5, alpha=.8, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  #scale_x_continuous(limits=c(0,0.16))+
+  labs(x="Early Hibernation Temperature", y="Early Hibernation Body Mass (grams)")+
+  #scale_y_continuous(limits=c(-0.0015, 0.0005), breaks=c(-0.0015, -0.001,-0.0005,0,0.0005), labels=c("-0.0015", "-0.001","-0.0005","0","0.0005"))+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p.early.mass1
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/mass_early~temp_early.PNG",p.early.mass1,scale=3,width=10,height=6,units="cm",dpi=600)
 
 
 
@@ -1245,15 +1339,715 @@ plot(dis.df$d.mass.daily.p ~ dis.df$mean.torpor.temp)
 
 ## Mean change in mean torpor bout temperature following arousal (weighted)
 
-m.dmass4 <- glmmTMB(d.mass.daily.p ~ mean.d.torpor.temp.weighted + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass4)
+m.dmass4 <- glmmTMB(d.mass.daily.p ~ mean.d.torpor.temp.weighted + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass4)
 #Nothing by itself
 plot(dis.df$d.mass.daily.p ~ dis.df$mean.d.torpor.temp.weighted)
 
 #What about interacting with temperature? 
-m.dmass5 <- glmmTMB(d.mass.daily.p ~ mean.d.torpor.temp.weighted*mean.torpor.temp + (1|site) + (1|sex), family=Gamma(link="log"), data=dis.df);summary(m.dmass5)
+m.dmass5 <- glmmTMB(d.mass.daily.p ~ mean.d.torpor.temp.weighted*mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass5)
 #No interaction
 
 
 
 
+## Early mass
+
+m.dmass6 <- glmmTMB(d.mass.daily.p ~ mass.early + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass6)
+plot(allEffects(m.dmass6))
+plot(dis.df$d.mass.daily.p ~ dis.df$mass.early)
+#Clearly there's a positive association between early hibernation body mass and the amount of mass lost. 
+
+m.dmass6.df <- as.data.frame(expand.grid(mass.early=seq(7, 13, 0.01), site=unique(dis.df$site)))
+m.dmass6.yhat <- as.data.frame(predict(m.dmass6, m.dmass6.df, se.fit=T, re.form=NA, type='response'))
+m.dmass6.yhat.fin <- cbind(m.dmass6.df, m.dmass6.yhat)
+m.dmass6.yhat.fin <- m.dmass6.yhat.fin %>%
+  group_by(mass.early) %>%
+  summarise(model.fit = mean(fit), model.se = mean(se.fit)) %>%
+  mutate(lo.ci = model.fit-(1.96*model.se), hi.ci = model.fit + (1.96*model.se))
+#This dataframe contains model predictions and 95% confidence intervals. 
+
+p.dmass6 <- ggplot(aes(x=mass.early, y=model.fit), data=m.dmass6.yhat.fin) +
+  geom_ribbon(aes(x=mass.early, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
+  geom_point(aes(x=mass.early, y=d.mass.daily.p, fill=mean.torpor.temp, shape=sex), size=3, color="black", data=dis.df)+
+  geom_line(color="black", size=1.5)+
+  scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Early Hibernation Body Mass (grams)", y="Daily Mass Loss (grams)")+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p.dmass6
+#Plot. 
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/mass_loss~early_mass.PNG",p.dmass6,scale=3,width=10,height=6,units="cm",dpi=600)
+
+
+
+
+
+#Early loads
+m.dmass7 <- glmmTMB(d.mass.daily.p ~ lgdL.early.no.neg + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass7)
+plot(allEffects(m.dmass7))
+plot(dis.df$d.mass.daily.p ~ dis.df$lgdL.early.no.neg)
+# That's an association. Interaction with arousal freq or mean torpor temp?
+m.dmass7.2 <- glmmTMB(d.mass.daily.p ~ lgdL.early.no.neg*mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass7.2)
+m.dmass7.2 <- glmmTMB(d.mass.daily.p ~ lgdL.early.no.neg*arousal.freq.days + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass7.2)
+#No to both. 
+
+m.dmass7.e <- as.data.frame(Effect(c("lgdL.early.no.neg"),m.dmass7, xlevels=100))
+#Dataframe containing model predictions
+
+
+p.dmass6 <- ggplot(aes(x=lgdL.early.no.neg, y=fit), data=m.dmass7.e) +
+  geom_line()+
+  geom_ribbon(aes(x=lgdL.early.no.neg, ymin=lower, ymax=upper), alpha=0.4, fill="gray", color="black")+
+  geom_point(aes(x=lgdL.early.no.neg, y=d.mass.daily.p, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Early Hibernation Pathogen Load", y="Daily Mass Loss (grams)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p.dmass6
+#Plot. 
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/mass_loss~early_load.PNG",p.dmass6,scale=3,width=10,height=6,units="cm",dpi=600)
+
+
+
+
+
+
+## Mean change in mean torpor bout temperature following arousal (weighted)
+
+m.dmass8 <- glmmTMB(d.mass.daily.p ~ mean.d.torpor.temp.weighted + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass8)
+plot(allEffects(m.dmass8))
+#Nothing
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.d.torpor.temp.weighted)
+
+
+
+
+
+
+#Mean deviation from first torpor bout:
+m.dmass9 <- glmmTMB(d.mass.daily.p ~ mean.temp.dev.first.torpor.weighted + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass9)
+plot(allEffects(m.dmass9))
+#Nothing
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.temp.dev.first.torpor.weighted)
+
+
+
+
+
+
+#Mean deviation from warmest section:
+m.dmass10 <- glmmTMB(d.mass.daily.p ~ mean.temp.dev.warmest.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass10)
+plot(allEffects(m.dmass10))
+#Nothing
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.temp.dev.warmest.sec)
+
+
+m.dmass10.e <- as.data.frame(Effect(c("mean.temp.dev.warmest.sec"), m.dmass10))
+#Dataframe containing model predictions
+
+p.dmass7<- ggplot(m.dmass10.e, aes(x=mean.temp.dev.warmest.sec, y=fit)) +
+  geom_line()+
+  geom_ribbon(alpha=0.1, aes(ymin=lower, ymax=upper))+
+  geom_point(aes(x=mean.temp.dev.warmest.sec, y=d.mass.daily.p, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Mean Daily Deviation from \n Warmest Section's Temperature", y="Daily Mass Loss")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p.dmass7
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/mass_loss~mean_dev_warmest_section.PNG",p.dmass7,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+
+
+
+#Mean deviation from coldest:
+m.dmass11<- glmmTMB(d.mass.daily.p ~ mean.temp.dev.coldest.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass11)
+plot(allEffects(m.dmass11))
+#Nothing
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.temp.dev.coldest.sec)
+
+
+
+
+
+
+
+#Mean deviation from origin section:
+m.dmass12 <- glmmTMB(d.mass.daily.p ~ mean.temp.dev.origin.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass12)
+plot(allEffects(m.dmass12))
+#Nothing
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.temp.dev.origin.sec)
+
+
+
+
+
+#### Early pathogen load ~ behavior ####
+
+#Recall that there are two variables in the dis.df dataframe for early hibernation pathogen loads:
+# 1) lgdL.early = contains negative samples assigned 40ct cutoff values. 
+# 2) lgdL.early.no.neg = does not contain negative samples assigned 40ct cutoff values. 
+
+
+
+
+#Arousal frequency: lgdL.early
+m1.early.load <- glmmTMB(arousal.freq.days ~ lgdL.early + (1|site), family=Gamma(link="log"), data=dis.df);summary(m1.early.load)
+plot(allEffects(m1.early.load))
+plot(dis.df$arousal.freq.days ~ dis.df$lgdL.early)
+hist(resid(m1.early.load))
+shapiro.test(resid(m1.early.load))
+#could be some relationship, but the 40ct bats make this data look weird
+
+#Arousal frequency: lgdL.early.no.neg
+m1.early.load.no.neg <- glmer(arousal.freq.days ~ lgdL.early.no.neg + (1|site), family=Gamma(link="log"), data=dis.df);summary(m1.early.load.no.neg)
+plot(allEffects(m1.early.load.no.neg))
+hist(resid(m1.early.load.no.neg))
+shapiro.test(resid(m1.early.load.no.neg))
+plot(dis.df$lgdL.early.no.neg ~ dis.df$arousal.freq.days)
+#Again, could be some relationship, but it's weak. 
+
+
+
+m2.e <- as.data.frame(Effect(c("lgdL.early"), m1.early.load, xlevels=100))
+#Dataframe containing model predictions
+
+p1.early.load<- ggplot(m2.e, aes(x=lgdL.early, y=fit)) +
+  geom_line()+
+  geom_ribbon(alpha=0.1, aes(ymin=lower, ymax=upper))+
+  geom_point(aes(x=lgdL.early, y=arousal.freq.days, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Early Hibernation Pathogen Load", y="Arousal Frequency (Arousals per Day)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p1.early.load
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/arousal_freq~early_load.PNG",p1.early.load,scale=3,width=8,height=4,units="cm",dpi=600)
+
+#Here's the same plot but without the 40ct bats:
+p1.early.load.no.neg<- ggplot() +
+  geom_point(aes(x=lgdL.early.no.neg, y=arousal.freq.days, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Early Hibernation Pathogen Load", y="Arousal Frequency (Arousals per Day)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p1.early.load.no.neg
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/arousal_freq~early_load_no_neg.PNG",p1.early.load.no.neg,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+
+# Mean torpor temp: 
+
+m3.early.load <- glmmTMB(lgdL.early ~ mean.torpor.temp + (1|site), data=dis.df);summary(m3.early.load)
+plot(allEffects(m3.early.load))
+plot(dis.df$lgdL.early ~ dis.df$mean.torpor.temp)
+#Appears to be no association. 
+
+#Without the 40ct bats:
+m3.early.load.no.neg <- glmmTMB(lgdL.early.no.neg ~ mean.torpor.temp + (1|site), data=dis.df);summary(m3.early.load.no.neg)
+plot(allEffects(m3.early.load.no.neg))
+plot(dis.df$lgdL.early.no.neg ~ dis.df$mean.torpor.temp)
+#Appears to be no association. 
+
+
+
+
+
+
+
+## Mean change in mean torpor bout temperature following arousal (weighted)
+
+m4.early.load <- lmer(lgdL.early ~ mean.d.torpor.temp.weighted + (1|site), data=dis.df);summary(m4.early.load)
+plot(allEffects(m4.early.load))
+#Nothing
+plot(dis.df$lgdL.early ~ dis.df$mean.d.torpor.temp.weighted)
+
+#Without the 40ct bats:
+m4.early.load.no.neg <- lmer(lgdL.early.no.neg ~ mean.d.torpor.temp.weighted + (1|site), data=dis.df);summary(m4.early.load.no.neg)
+plot(allEffects(m4.early.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.early.no.neg ~ dis.df$mean.d.torpor.temp.weighted)
+
+
+
+
+#Mean deviation from first torpor bout:
+m5.early.load <- lmer(lgdL.early ~ mean.temp.dev.first.torpor.weighted + (1|site), data=dis.df);summary(m5.early.load)
+plot(allEffects(m5.early.load))
+#Nothing
+plot(dis.df$lgdL.early ~ dis.df$mean.temp.dev.first.torpor.weighted)
+
+#Without 40ct bats:
+m5.early.load.no.neg <- lmer(lgdL.early.no.neg ~ mean.temp.dev.first.torpor.weighted + (1|site), data=dis.df);summary(m5.early.load.no.neg)
+plot(allEffects(m5.early.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.early.no.neg ~ dis.df$mean.temp.dev.first.torpor.weighted)
+
+
+
+
+
+#Mean deviation from warmest section:
+m6.early.load <- lmer(lgdL.early ~ mean.temp.dev.warmest.sec + (1|site), data=dis.df);summary(m6.early.load)
+plot(allEffects(m6.early.load))
+#Nothing
+plot(dis.df$lgdL.early ~ dis.df$mean.temp.dev.warmest.sec)
+
+#Without 40ct bats:
+m6.early.load.no.neg <- lmer(lgdL.early.no.neg ~ mean.temp.dev.warmest.sec + (1|site), data=dis.df);summary(m6.early.load.no.neg)
+plot(allEffects(m6.early.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.early.no.neg ~ dis.df$mean.temp.dev.warmest.sec)
+
+
+
+
+
+#Mean deviation from coldest:
+m7.early.load <- lmer(lgdL.early ~ mean.temp.dev.coldest.sec + (1|site), data=dis.df);summary(m7.early.load)
+plot(allEffects(m7.early.load))
+#Nothing
+plot(dis.df$lgdL.early ~ dis.df$mean.temp.dev.coldest.sec)
+
+#Without 40ct bats
+m7.early.load.no.neg <- lmer(lgdL.early.no.neg ~ mean.temp.dev.coldest.sec + (1|site), data=dis.df);summary(m7.early.load.no.neg)
+plot(allEffects(m7.early.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.early.no.neg ~ dis.df$mean.temp.dev.coldest.sec)
+
+
+
+
+
+#Mean deviation from origin section:
+m8.early.load <- lmer(lgdL.early ~ mean.temp.dev.origin.sec + (1|site), data=dis.df);summary(m8.early.load)
+plot(allEffects(m8.early.load))
+#Nothing
+plot(dis.df$lgdL.early ~ dis.df$mean.temp.dev.origin.sec)
+
+#Without 40ct bats:
+m8.early.load.no.neg <- lmer(lgdL.early.no.neg ~ mean.temp.dev.origin.sec + (1|site), data=dis.df);summary(m8.early.load.no.neg)
+plot(allEffects(m8.early.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.early.no.neg ~ dis.df$mean.temp.dev.origin.sec)
+
+
+
+#### Late pathogen load ~ behavior ####
+
+
+#Recall that there are two variables in the dis.df dataframe for late hibernation pathogen loads:
+# 1) lgdL.late = contains negative samples assigned 40ct cutoff values. 
+# 2) lgdL.late.no.neg = does not contain negative samples assigned 40ct cutoff values. 
+
+
+
+
+#Arousal frequency
+m1.late.load <- glmmTMB(arousal.freq.days ~ lgdL.late + (1|site),family=Gamma(link="log"),data=dis.df);summary(m1.late.load)
+plot(allEffects(m1.late.load))
+plot(dis.df$arousal.freq.days ~ dis.df$lgdL.late)
+hist(resid(m1.late.load))
+shapiro.test(resid(m1.late.load))
+#looks like nothing
+
+#Without 40ct bats:
+m1.late.load.no.neg <- glmmTMB(arousal.freq.days ~ lgdL.late.no.neg + (1|site),family=Gamma(link="log"),data=dis.df);summary(m1.late.load.no.neg)
+plot(allEffects(m1.late.load.no.neg))
+plot(dis.df$arousal.freq.days ~ dis.df$lgdL.late.no.neg)
+#Nothing
+
+
+
+
+
+
+#Mean torpor temperature
+
+m2.late.load <- lmer(lgdL.late ~ mean.torpor.temp + (1|site), data=dis.df);summary(m2.late.load)
+plot(allEffects(m2.late.load))
+plot(dis.df$lgdL.late ~ dis.df$mean.torpor.temp)
+#Appears to be no association. 
+
+#Without the 40ct bats:
+m2.late.load.no.neg <- lmer(lgdL.late.no.neg ~ mean.torpor.temp + (1|site), data=dis.df);summary(m2.late.load.no.neg)
+plot(allEffects(m2.late.load.no.neg))
+plot(dis.df$lgdL.late.no.neg ~ dis.df$mean.torpor.temp)
+#Appears to be no association. 
+
+
+
+
+
+
+## Mean change in mean torpor bout temperature following arousal (weighted)
+
+m3.late.load <- lmer(lgdL.late ~ mean.d.torpor.temp.weighted + (1|site), data=dis.df);summary(m3.early.load)
+plot(allEffects(m3.late.load))
+#Nothing
+plot(dis.df$lgdL.late ~ dis.df$mean.d.torpor.temp.weighted)
+
+#Without the 40ct bats:
+m3.late.load.no.neg <- lmer(lgdL.late.no.neg ~ mean.d.torpor.temp.weighted + (1|site), data=dis.df);summary(m3.late.load.no.neg)
+plot(allEffects(m3.late.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.late.no.neg ~ dis.df$mean.d.torpor.temp.weighted)
+
+
+
+
+
+
+#Mean deviation from first torpor bout:
+m4.late.load <- lmer(lgdL.late ~ mean.temp.dev.first.torpor.weighted + (1|site), data=dis.df);summary(m4.late.load)
+plot(allEffects(m4.late.load))
+#Nothing
+plot(dis.df$lgdL.late ~ dis.df$mean.temp.dev.first.torpor.weighted)
+
+#Without 40ct bats:
+m4.late.load.no.neg <- lmer(lgdL.late.no.neg ~ mean.temp.dev.first.torpor.weighted + (1|site), data=dis.df);summary(m4.late.load.no.neg)
+plot(allEffects(m4.late.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.late.no.neg ~ dis.df$mean.temp.dev.first.torpor.weighted)
+
+
+
+
+
+
+#Mean deviation from warmest section:
+m5.late.load <- lmer(lgdL.late ~ mean.temp.dev.warmest.sec + (1|site), data=dis.df);summary(m5.late.load)
+plot(allEffects(m5.late.load))
+#Nothing
+plot(dis.df$lgdL.late ~ dis.df$mean.temp.dev.warmest.sec)
+
+#Without 40ct bats:
+m5.late.load.no.neg <- lmer(lgdL.late.no.neg ~ mean.temp.dev.warmest.sec + (1|site), data=dis.df);summary(m5.late.load.no.neg)
+plot(allEffects(m5.late.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.late.no.neg ~ dis.df$mean.temp.dev.warmest.sec)
+
+
+
+
+
+
+#Mean deviation from coldest:
+m6.late.load <- lmer(lgdL.late ~ mean.temp.dev.coldest.sec + (1|site), data=dis.df);summary(m6.late.load)
+plot(allEffects(m6.late.load))
+#Nothing
+plot(dis.df$lgdL.late ~ dis.df$mean.temp.dev.coldest.sec)
+
+#Without 40ct bats
+m6.late.load.no.neg <- lmer(lgdL.late.no.neg ~ mean.temp.dev.coldest.sec + (1|site), data=dis.df);summary(m6.late.load.no.neg)
+plot(allEffects(m6.late.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.late.no.neg ~ dis.df$mean.temp.dev.coldest.sec)
+
+
+
+
+
+
+#Mean deviation from origin section:
+m7.late.load <- lmer(lgdL.late ~ mean.temp.dev.origin.sec + (1|site), data=dis.df);summary(m7.late.load)
+plot(allEffects(m7.late.load))
+#Nothing
+plot(dis.df$lgdL.late ~ dis.df$mean.temp.dev.origin.sec)
+
+#Without 40ct bats:
+m7.late.load.no.neg <- lmer(lgdL.late.no.neg ~ mean.temp.dev.origin.sec + (1|site), data=dis.df);summary(m7.late.load.no.neg)
+plot(allEffects(m7.late.load.no.neg))
+#Nothing
+plot(dis.df$lgdL.late.no.neg ~ dis.df$mean.temp.dev.origin.sec)
+
+
+
 #### Pathogen growth ~ behavior ####
+
+#Recall that there are two variables in the dis.df dataframe for pathogen growth:
+# 1) d.lgdL.daily = INCLUDES bats that did not have detectable infection in BOTH early and late hibernation (40 ct values assigned to both)
+# 2) d.lgdL.daily.no.neg = EXCLUDES bats that did not have detectable infection in BOTH early and late hibernation 
+
+#Because these metrics contain negative values and I'd like to run gamma glm's on them, I need to force them into positive space by adding the absolute
+#value of the minimum value plus a small constant on the same order of magnitude:
+
+d.lgdL.daily.c <- (-(min(dis.df$d.lgdL.daily, na.rm=T)-0.002))
+d.lgdL.daily.no.neg.c <- (-(min(dis.df$d.lgdL.no.neg.daily, na.rm=T)-0.002))
+#the constants to add 
+
+dis.df$d.lgdL.daily.pos <- dis.df$d.lgdL.daily + d.lgdL.daily.c
+dis.df$d.lgdL.no.neg.daily.pos <- dis.df$d.lgdL.no.neg.daily + d.lgdL.daily.no.neg.c
+#The positive values. 
+
+
+#Arousal frequency
+m1.growth.load <- glmmTMB(d.lgdL.daily.pos ~ arousal.freq.days + (1|site),family=Gamma(link="log"), data=dis.df);summary(m1.growth.load)
+plot(allEffects(m1.growth.load))
+plot(dis.df$d.lgdL.daily.pos ~ dis.df$arousal.freq.days)
+#looks like nothing
+
+#Without 40ct bats:
+m1.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ arousal.freq.days + (1|site),family=Gamma(link="log"),data=dis.df);summary(m1.growth.load.no.neg)
+plot(allEffects(m1.growth.load.no.neg))
+plot(dis.df$d.lgdL.no.neg.daily.pos ~ dis.df$arousal.freq.days)
+#Nothing
+
+p01.growth.load<- ggplot() +
+  geom_point(aes(x=arousal.freq.days, y=d.lgdL.no.neg.daily, fill=site, shape=sex), size=3, alpha=.8, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  scale_x_continuous(limits=c(0,0.16))+
+  labs(x="Arousal Frequency (Num. Arousals per Day)", y="Daily Pathogen Growth \n (log10-d.gdL/sampling period)")+
+  scale_y_continuous(limits=c(-0.0015, 0.0005), breaks=c(-0.0015, -0.001,-0.0005,0,0.0005), labels=c("-0.0015", "-0.001","-0.0005","0","0.0005"))+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p01.growth.load
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/path_growth~arousal_freq.PNG",p01.growth.load,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+
+
+
+
+
+
+#Mean torpor temperature
+
+m2.growth.load <- glmmTMB(d.lgdL.daily.pos ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m2.growth.load)
+plot(allEffects(m2.growth.load))
+plot(dis.df$d.lgdL.daily.pos ~ dis.df$mean.torpor.temp)
+#Appears to be no association. 
+
+
+p0.growth.load<- ggplot() +
+  geom_point(aes(x=mean.torpor.temp, y=d.lgdL.no.neg.daily, fill=site, shape=sex), size=3, alpha=.8, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Mean Torpor Bout Temperature", y="Daily Pathogen Growth \n (log10-d.gdL/sampling period)")+
+  scale_y_continuous(limits=c(-0.0015, 0.0005), breaks=c(-0.0015, -0.001,-0.0005,0,0.0005), labels=c("-0.0015", "-0.001","-0.0005","0","0.0005"))+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p0.growth.load
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/path_growth~mean_torpor_temp.PNG",p0.growth.load,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+#Without the 40ct bats:
+m2.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m2.growth.load.no.neg)
+plot(allEffects(m2.growth.load.no.neg))
+plot(dis.df$d.lgdL.no.neg.daily.pos ~ dis.df$mean.torpor.temp)
+#Appears to be no association. 
+
+
+
+
+
+
+
+
+## Mean change in mean torpor bout temperature following arousal (weighted)
+
+m3.growth.load <- glmmTMB(d.lgdL.daily.pos ~ mean.d.torpor.temp.weighted + (1|site), family=Gamma(link="log"), data=dis.df);summary(m3.growth.load)
+plot(allEffects(m3.growth.load))
+plot(dis.df$d.lgdL.daily ~ dis.df$mean.d.torpor.temp.weighted)
+
+#Without the 40ct bats:
+m3.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ mean.d.torpor.temp.weighted + (1|site), family=Gamma(link="log"), data=dis.df);summary(m3.growth.load.no.neg)
+plot(allEffects(m3.growth.load.no.neg))
+plot(dis.df$d.lgdL.no.neg ~ dis.df$mean.d.torpor.temp.weighted)
+
+m3.growth.e <- as.data.frame(Effect(c("mean.d.torpor.temp.weighted"), m3.growth.load.no.neg)) 
+m3.growth.e$fit <- m3.growth.e$fit - d.lgdL.daily.no.neg.c
+m3.growth.e$lower <- m3.growth.e$lower - d.lgdL.daily.no.neg.c
+m3.growth.e$upper <- m3.growth.e$upper - d.lgdL.daily.no.neg.c
+#Dataframe containing model predictions, corrected for the added constant
+
+
+p1.growth.load<- ggplot(m3.growth.e, aes(x=mean.d.torpor.temp.weighted, y=fit)) +
+  geom_line()+
+  geom_ribbon(alpha=0.1, aes(ymin=lower, ymax=upper))+
+  geom_point(aes(x=mean.d.torpor.temp.weighted, y=d.lgdL.no.neg.daily, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Mean Change in Torpor Bout \n Temperature Following Arousal (Weighted)", y="Daily Pathogen Growth \n (log10-d.gdL/sampling period)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p1.growth.load
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/path_growth~mean_change_torpor_temp_following_arousal.PNG",p1.growth.load,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+
+
+
+
+
+
+
+#Mean deviation from first torpor bout:
+m4.growth.load <- glmmTMB(d.lgdL.daily.pos ~ mean.temp.dev.first.torpor.weighted + (1|site), family=Gamma(link="log"), data=dis.df);summary(m4.growth.load)
+plot(allEffects(m4.growth.load))
+plot(dis.df$d.lgdL.daily ~ dis.df$mean.temp.dev.first.torpor.weighted)
+
+#Without 40ct bats:
+m4.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ mean.temp.dev.first.torpor.weighted + (1|site), family=Gamma(link="log"), data=dis.df);summary(m4.growth.load.no.neg)
+plot(allEffects(m4.growth.load.no.neg))
+plot(dis.df$d.lgdL.no.neg.daily ~ dis.df$mean.temp.dev.first.torpor.weighted)
+
+m4.growth.e <- as.data.frame(Effect(c("mean.temp.dev.first.torpor.weighted"), m4.growth.load.no.neg)) 
+m4.growth.e$fit <- m4.growth.e$fit - d.lgdL.daily.no.neg.c
+m4.growth.e$lower <- m4.growth.e$lower - d.lgdL.daily.no.neg.c
+m4.growth.e$upper <- m4.growth.e$upper - d.lgdL.daily.no.neg.c
+#Dataframe containing model predictions, corrected for the added constant
+
+p2.growth.load<- ggplot(m4.growth.e, aes(x=mean.temp.dev.first.torpor.weighted, y=fit)) +
+  geom_line()+
+  geom_ribbon(alpha=0.1, aes(ymin=lower, ymax=upper))+
+  geom_point(aes(x= mean.temp.dev.first.torpor.weighted, y=d.lgdL.daily, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Mean Temp Deviation from \n First Torpor Bout (Weighted)", y="Daily Pathogen Growth \n (log10-d.gdL/sampling period)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p2.growth.load
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/path_growth~mean_temp_dev_first_torpor.PNG",p2.growth.load,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+
+
+
+
+
+
+
+#Mean deviation from warmest section:
+m5.growth.load <- glmmTMB(d.lgdL.daily.pos ~ mean.temp.dev.warmest.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m5.growth.load)
+plot(allEffects(m5.growth.load))
+#Nothing
+plot(dis.df$d.lgdL.daily ~ dis.df$mean.temp.dev.warmest.sec)
+
+#Without 40ct bats:
+m5.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ mean.temp.dev.warmest.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m5.growth.load.no.neg)
+plot(allEffects(m5.growth.load.no.neg))
+#Nothing
+plot(dis.df$d.lgdL.no.neg.daily ~ dis.df$mean.temp.dev.warmest.sec)
+
+p3.growth.load<- ggplot() +
+  geom_point(aes(x= mean.temp.dev.warmest.sec, y=d.lgdL.daily, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Mean Daily Temp Deviation from \n Warmest Section's Psych/HOBO", y="Daily Pathogen Growth \n (log10-d.gdL/sampling period)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p3.growth.load
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/path_growth~mean_dev_warmest_section.PNG",p3.growth.load,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+
+
+
+
+
+
+
+#Mean deviation from coldest section:
+m6.growth.load <- glmmTMB(d.lgdL.daily.pos ~ mean.temp.dev.coldest.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m6.growth.load)
+plot(allEffects(m6.growth.load))
+#Nothing
+plot(dis.df$d.lgdL.daily ~ dis.df$mean.temp.dev.coldest.sec)
+
+#Without 40ct bats:
+m6.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ mean.temp.dev.coldest.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m6.growth.load.no.neg)
+plot(allEffects(m6.growth.load.no.neg))
+#Nothing
+plot(dis.df$d.lgdL.no.neg.daily ~ dis.df$mean.temp.dev.coldest.sec)
+
+p4.growth.load<- ggplot() +
+  geom_point(aes(x= mean.temp.dev.coldest.sec, y=d.lgdL.daily, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Mean Daily Temp Deviation from \n Coldest Section's Psych/HOBO", y="Daily Pathogen Growth \n (log10-d.gdL/sampling period)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p4.growth.load
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/path_growth~mean_dev_coldest_section.PNG",p4.growth.load,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+
+
+#Mean deviation from origin section:
+m7.growth.load <- glmmTMB(d.lgdL.daily.pos ~ mean.temp.dev.origin.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m7.growth.load)
+plot(allEffects(m7.growth.load))
+#Nothing
+plot(dis.df$d.lgdL.daily ~ dis.df$mean.temp.dev.origin.sec)
+
+#Without 40ct bats:
+m7.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ mean.temp.dev.origin.sec + (1|site), family=Gamma(link="log"), data=dis.df);summary(m7.growth.load.no.neg)
+plot(allEffects(m7.growth.load.no.neg))
+#Nothing
+plot(dis.df$d.lgdL.no.neg.daily ~ dis.df$mean.temp.dev.origin.sec)
+
+p5.growth.load<- ggplot() +
+  geom_point(aes(x= mean.temp.dev.origin.sec, y=d.lgdL.no.neg.daily, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  scale_shape_manual(values=c(21,24), name="Sex")+
+  labs(x="Mean Daily Temp Deviation from \n Origin Section's Psych/HOBO", y="Daily Pathogen Growth \n (log10-d.gdL/sampling period)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  theme(
+    axis.text = element_text(size=13),
+    axis.title = element_text(size=19),
+    plot.margin=margin(10,10,0,30),
+    legend.title = element_text(size=13),
+    legend.text = element_text(size=13)
+  );p5.growth.load
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/path_growth~mean_dev_origin_section.PNG",p5.growth.load,scale=3,width=8,height=4,units="cm",dpi=600)
