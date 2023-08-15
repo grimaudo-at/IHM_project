@@ -6,6 +6,7 @@ library(lmerTest)
 library(ggExtra)
 library(glmmTMB)
 library(betareg)
+library(tanagR)
 
 dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/arousals_torpors_working.csv")
 #This dataframe contains a list and summary of every individual's arousal and torpor events. 
@@ -92,7 +93,7 @@ ind.summ$sampling.duration.days <- as.numeric(durations$sampling.duration[match(
 #Bringing the sampling duration data into the individual summary dataframe
 
 ind.summ$arousal.freq.days <- as.numeric(ind.summ$num.arousals/ind.summ$sampling.duration.days)
-#This is the arousal frequency or, on average, the proportion of the sampling time that passed until an arousal. 
+#This is the arousal frequency or, on average, the number of arousals per day
 
 
 #Moving on to average torpor bout length.
@@ -315,6 +316,15 @@ ind.summ$mean.temp.dev.warmest.sec <- trans.daily.devs.summ$mean.temp.dev.warmes
 ind.summ$mean.temp.dev.coldest.sec <- trans.daily.devs.summ$mean.temp.dev.coldest.sec[match(ind.summ$trans_id, trans.daily.devs.summ$trans_id)]
 ind.summ$mean.temp.dev.origin.sec <- trans.daily.devs.summ$mean.temp.dev.origin.sec[match(ind.summ$trans_id, trans.daily.devs.summ$trans_id)]
 
+#I want to construct an average torpor bout temperature for each bat in the month of November
+avg.nov.torpor.temps <- raw.trans.data %>%
+  filter(behavior != "Arousal" & date < "2021-12-01")%>%
+  group_by(trans_id) %>%
+  summarise(mean.nov.temp = mean(temp))
+#The average torpor bout temperature for each individual in the month of November. NOTE that not
+#all bats have the same amount of data recorded in November!
+ind.summ$mean.torpor.temp.nov <- avg.nov.torpor.temps$mean.nov.temp[match(ind.summ$trans_id, avg.nov.torpor.temps$trans_id)]
+#matching it in. 
 
 
 
@@ -474,20 +484,20 @@ dis.df$d.lgdL.no.neg.daily = dis.df$d.lgdL.no.neg/dis.df$days.between.samples
 #This is the pathogen growth rate corrected for sampling interval, without the 40ct bats. 
 
 ## Can now match in all the transmitter summary data for each individual: 
-dis.df <- left_join(dis.df, ind.summ[,2:14], by="trans_id")
+dis.df <- left_join(dis.df, ind.summ[,2:15], by="trans_id")
 #Merged. 
 
 
 
 #### Variation across sites in behavior metrics ####
 
-dis.df$site <- factor(dis.df$site, levels = c("SOUTH LAKE MINE","GRAPHITE MINE","CP TUNNEL", "BLACKBALL", "ZIMMERMAN", "MEAD MINE","ELROY SPARTA"))
+dis.df$site <- factor(dis.df$site, levels = c("MEAD MINE","SOUTH LAKE MINE","GRAPHITE MINE","CP TUNNEL", "BLACKBALL", "ZIMMERMAN","ELROY SPARTA"))
 #Make sure site is a factor. I have ordered the levels of this factor from coldest mean torpor bout temp to warmest. 
 
 
 ## Arousal frequency
 
-ar.freq.m <- betareg(arousal.freq.days ~ site, data=dis.df, link="logit");summary(ar.freq.m)
+ar.freq.m <- glm(arousal.freq.days ~ site, family=Gamma(link="log"), data=dis.df);summary(ar.freq.m)
 #Beta regression of arousal frequencies. 
 
 ar.freq.summ <- dis.df %>%
@@ -1011,6 +1021,7 @@ d.mass.daily.site.p <- ggMarginal((ggplot(aes(x=site, y=d.mass.daily.mean), data
 
 
 
+
 #### Other data summaries ####
 
 #What was the breakdown of sites by sex? 
@@ -1100,7 +1111,7 @@ mean.torpor.temp.summ.p.df$season <- factor(mean.torpor.temp.summ.p.df$season, l
 point.temps.p.df$season <- factor(point.temps.p.df$season, levels = c("hiber_earl","Mean Torpor Bout Temperature","hiber_late"))
 #re-ordering factor 
 
-mean.point.temps.p2 <- (ggplot(aes(x=site, y=mean.point.temp, group=season), data=mean.torpor.temp.summ.p.df) +
+mean.point.temps.p2 <- ggplot(aes(x=site, y=mean.point.temp, group=season), data=mean.torpor.temp.summ.p.df) +
                          geom_point(aes(x=site, y=temp, fill=temp, shape=season), position=position_dodge(0.5),data=point.temps.p.df, size=4) +
                          geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), position=position_dodge(0.5),width=0.5, size=0.7) +
                          geom_point(aes(shape=season), position=position_dodge(0.5), size=7, color="Black", fill="White", stroke=1)+
@@ -1115,9 +1126,83 @@ mean.point.temps.p2 <- (ggplot(aes(x=site, y=mean.point.temp, group=season), dat
                            legend.title = element_text(size=13),
                            legend.text = element_text(size=13),
                            legend.position = "top"
-                         ));mean.point.temps.p2
+                         );mean.point.temps.p2
 ### THIS PLOT REALLY NEEDS TO BE TAKEN WITH A GRAIN OF SALT BECAUSE MOST OF THE TRANSMTITERS STOPPED RECORDING DATA IN MID-FEBRUARY, 
 ### WHEREAS LATE HIBERNATION POINT TEMPERATURE MEASURMENTS WERE TAKEN BETWEEN EARLY MARCH AND APRIL. 
+
+#Let's make the above into density plots:
+
+point.temps.p.df$site2<-NA
+#First going to re-name sites for ESA presentation
+point.temps.p.df$site2[point.temps.p.df$site=="SOUTH LAKE MINE"] <- "Site 1"
+point.temps.p.df$site2[point.temps.p.df$site=="GRAPHITE MINE"] <- "Site 2"
+point.temps.p.df$site2[point.temps.p.df$site=="CP TUNNEL"] <- "Site 3"
+point.temps.p.df$site2[point.temps.p.df$site=="BLACKBALL"] <- "Site 4"
+point.temps.p.df$site2[point.temps.p.df$site=="ZIMMERMAN"] <- "Site 5"
+point.temps.p.df$site2[point.temps.p.df$site=="MEAD MINE"] <- "Site 6"
+point.temps.p.df$site2[point.temps.p.df$site=="ELROY SPARTA"] <- "Site 7"
+
+#Also re-naming the seasons:
+point.temps.p.df$season2<-NA
+point.temps.p.df$season2[point.temps.p.df$season=="hiber_earl"] <- "Early Hibernation"
+point.temps.p.df$season2[point.temps.p.df$season=="Mean Torpor Bout Temperature"] <- "Overwinter"
+point.temps.p.df$season2[point.temps.p.df$season=="hiber_late"] <- "Late Hibernation"
+
+point.temps.p.df$season2 <- factor(point.temps.p.df$season2, levels = c("Early Hibernation","Late Hibernation","Overwinter"))
+#re-leveling seasons
+
+
+mean.point.temps.p3 <- ggplot(aes(x=temp, fill=season2), data=point.temps.p.df)+
+  geom_density(adjust=2, alpha=0.7)+
+  scale_x_continuous(limits=c(-2,12))+
+  coord_cartesian(ylim=c(0,1))+
+ # scale_y_continuous(limits=c(0,1.5))+
+  facet_wrap(~site2, scales='free', nrow=2)+
+  ylab(label="Density")+
+  xlab(expression("Temperature " ( degree~C)))+
+  scale_fill_manual(values=c("firebrick1","deepskyblue4","goldenrod1"))+
+  theme(
+    legend.position = c(0.87,0.25),
+    legend.spacing.y = unit(0.7,'cm'),
+    legend.title = element_blank(),
+    legend.text = element_text(family="Arial", color="black", size=15),
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_text(family="Arial", size=15, color="black"),
+    axis.text.x = element_text(family="Arial", size=15, color="black"),
+    axis.title = element_text(family="Arial", size=20, color="black"),
+    strip.text.x = element_text(family="Arial", size=15, color="black"),
+    strip.background = element_rect(color="black", fill="grey83")
+  )+
+  guides(fill = guide_legend(byrow = TRUE, override.aes = list(size=8)));mean.point.temps.p3
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/temp_density_2.PNG",mean.point.temps.p3,scale=3,width=12,height=6,units="cm",dpi=600)
+
+
+#Same plot as above but without the bats:
+
+mean.point.temps.p4 <- ggplot(aes(x=temp, fill=season2), data=point.temps.p.df[point.temps.p.df$season2!="Overwinter",])+
+  geom_density(adjust=2, alpha=0.7)+
+  scale_x_continuous(limits=c(-2,12))+
+  coord_cartesian(ylim=c(0,1))+
+  # scale_y_continuous(limits=c(0,1.5))+
+  facet_wrap(~site2, scales='free', nrow=2)+
+  ylab(label="Density")+
+  xlab(expression("Temperature " ( degree~C)))+
+  scale_fill_manual(values=c("firebrick1","deepskyblue4"))+
+  theme(
+    legend.position = c(0.87,0.25),
+    legend.spacing.y = unit(0.7,'cm'),
+    legend.title = element_blank(),
+    legend.text = element_text(family="Arial", color="black", size=15),
+    axis.ticks.y = element_blank(),
+    axis.text.y =element_text(family="Arial", size=15, color="black"),
+    axis.text.x = element_text(family="Arial", size=15, color="black"),
+    axis.title = element_text(family="Arial", size=20, color="black"),
+    strip.text.x = element_text(family="Arial", size=15, color="black"),
+    strip.background = element_rect(color="black", fill="grey83")
+  )+
+  guides(fill = guide_legend(byrow = TRUE, override.aes = list(size=8)));mean.point.temps.p4
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/temp_density_1.PNG",mean.point.temps.p4,scale=3,width=12,height=6,units="cm",dpi=600)
 
 
 
@@ -1125,10 +1210,18 @@ mean.point.temps.p2 <- (ggplot(aes(x=site, y=mean.point.temp, group=season), dat
 
 ## Arousal frequency: 
 
-m.arousal.freq.temp <- glmer(arousal.freq.days ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df); summary(m.arousal.freq.temp)
-#This needs to be modeled as an exponential distribution because it is time between events. Dispersion=1 should make it exponential distribution. 
-plot(dis.df$arousal.freq.days ~ dis.df$mean.torpor.temp)
+m.arousal.freq.temp <- glmmTMB(arousal.freq.days ~ temp.early + (1|site), family=Gamma(link="log"), data=dis.df); summary(m.arousal.freq.temp)
+plot(dis.df$arousal.freq.days ~ dis.df$temp.early)
+plot(allEffects(m.arousal.freq.temp))
 #Doesn't seem like there's any relationship. 
+m.arousal.freq.temp.yhat <- as.data.frame(Effect(c("temp.early"), m.arousal.freq.temp, xlevels=100))
+
+m.arousal.freq.temp.p<- ggplot(m.arousal.freq.temp.yhat, aes(x=temp.early, y=fit)) +
+  geom_line()+
+  geom_ribbon(alpha=0.1, aes(ymin=lower, ymax=upper))+
+  geom_point(aes(x=temp.early, y=arousal.freq.days, fill=site), size=3, shape=21, color="black", data=dis.df);m.arousal.freq.temp.p
+
+
 
 
 ## Mean torpor bout length: 
@@ -1255,7 +1348,7 @@ plot(dis.df$d.mass.daily.p ~ dis.df$arousal.freq.days)
 #In other words, if you woke up more frequently, you lost more mass. 
 
 
-m.dmass1.df <- as.data.frame(expand.grid(arousal.freq.days=seq(0.04, 0.16, 0.001), mean.torpor.temp=c(1,3,5,7,9), site=unique(dis.df$site)))
+m.dmass1.df <- as.data.frame(expand.grid(mean.torpor.temp=c(1,3,5,7,9), arousal.freq.days=seq(0.04, 0.16, 0.001),  site=unique(dis.df$site)))
 m.dmass1.yhat <- as.data.frame(predict(m.dmass1, m.dmass1.df, se.fit=T, re.form=NA, type='response'))
 m.dmass1.yhat.fin <- cbind(m.dmass1.df, m.dmass1.yhat)
 m.dmass1.yhat.fin <- m.dmass1.yhat.fin %>%
@@ -1267,21 +1360,137 @@ m.dmass1.yhat.fin <- m.dmass1.yhat.fin %>%
 
 p.dmass1 <- ggplot(aes(x=arousal.freq.days, y=model.fit, color=mean.torpor.temp, group=mean.torpor.temp), data=m.dmass1.yhat.fin) +
   #geom_ribbon(aes(x=arousal.freq.days, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
-  geom_point(aes(x=arousal.freq.days, y=d.mass.daily.p, fill=mean.torpor.temp, shape=sex), size=5, alpha=0.8, color="black", data=dis.df)+
+  geom_point(aes(x=arousal.freq.days, y=d.mass.daily.p, fill=mean.torpor.temp), shape=21, size=3,color="black", data=dis.df)+
   geom_line(size=1.5)+
   scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature", guide = F)+
-  scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+  scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout\nTemperature (Celsius)")+
+  labs(x="Arousal Frequency\n(Arousals per Day)", y="Daily Mass Loss (Grams)")+
+  scale_x_continuous(limits=c(0.03,0.17))+
+  theme(
+    axis.text = element_text(family="Arial", size=13, color="black"),
+    axis.title = element_text(family="Arial", size=19),
+    axis.ticks = element_line(color="black", linewidth=0.5),
+    plot.margin=margin(10,10,0,30),
+    panel.grid.major = element_line(color="grey89"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill="white", color="black", linewidth=1),
+    legend.title = element_text(angle=90, family="Arial",size=10),
+    legend.text = element_text(family="Arial", size=10),
+    legend.key.width = unit(0.4,'cm'),
+    legend.key.height =  unit(0.7,'cm'),
+    legend.background = element_rect(fill="white", color="black"),
+    legend.key = element_blank(),
+    legend.position = c(0.1,0.78)
+  )+
+  guides(fill=guide_colorbar(title.position = "left"));p.dmass1
+#Plot. 
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/mass_loss~arousal_freq*mean_torpor_temp.PNG",p.dmass1,scale=3,width=6,height=4,units="cm",dpi=600)
+
+#With just the high temperature line:
+
+p.dmass1.2 <- ggplot(aes(x=arousal.freq.days, y=model.fit, color=mean.torpor.temp, group=mean.torpor.temp), data=m.dmass1.yhat.fin[m.dmass1.yhat.fin$mean.torpor.temp==9,]) +
+  #geom_ribbon(aes(x=arousal.freq.days, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
+  geom_point(aes(x=arousal.freq.days, y=d.mass.daily.p, fill=mean.torpor.temp), shape=21, size=3,color="black", data=dis.df)+
+  geom_line(color="red", size=1.5)+
+  scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout\nTemperature (Celsius)")+
+  labs(x="Arousal Frequency\n(Arousals per Day)", y="Daily Mass Loss (Grams)")+
+  scale_x_continuous(limits=c(0.03,0.17))+
+  theme(
+    axis.text = element_text(family="Arial", size=13, color="black"),
+    axis.title = element_text(family="Arial", size=19),
+    axis.ticks = element_line(color="black", linewidth=0.5),
+    plot.margin=margin(10,10,0,30),
+    panel.grid.major = element_line(color="grey89"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill="white", color="black", linewidth=1),
+    legend.title = element_text(angle=90, family="Arial",size=10),
+    legend.text = element_text(family="Arial", size=10),
+    legend.key.width = unit(0.4,'cm'),
+    legend.key.height =  unit(0.7,'cm'),
+    legend.background = element_rect(fill="white", color="black"),
+    legend.key = element_blank(),
+    legend.position = c(0.1,0.78)
+  )+
+  guides(fill=guide_colorbar(title.position = "left"));p.dmass1.2
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/mass_loss~arousal_freq*mean_torpor_temp2.PNG",p.dmass1.2,scale=3,width=6,height=4,units="cm",dpi=600)
+
+
+#Flip it so temp is on x-axis and color is by arousal freq:
+m.dmass1.2 <- glmmTMB(d.mass.daily.p ~mean.torpor.temp* arousal.freq.days + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass1.2)
+#random effect of site. 
+plot(allEffects(m.dmass1.2))
+
+
+m.dmass1.2.df <- as.data.frame(expand.grid(arousal.freq.days=c(0.04, 0.08, 0.12, 0.16, 0.20), mean.torpor.temp=seq(0,10,0.01), site=unique(dis.df$site)))
+m.dmass1.2.yhat <- as.data.frame(predict(m.dmass1.2, m.dmass1.2.df, se.fit=T, re.form=NA, type='response'))
+m.dmass1.2.yhat.fin <- cbind(m.dmass1.2.df, m.dmass1.2.yhat)
+m.dmass1.2.yhat.fin <- m.dmass1.2.yhat.fin %>%
+  group_by(mean.torpor.temp, arousal.freq.days) %>%
+  summarise(model.fit = mean(fit), model.se = mean(se.fit)) %>%
+  mutate(lo.ci = model.fit-(1.96*model.se), hi.ci = model.fit + (1.96*model.se))
+#This dataframe contains model predictions and 95% confidence intervals. 
+
+
+p.dmass1.3 <- ggplot(aes(x=mean.torpor.temp, y=model.fit, color=arousal.freq.days, group=arousal.freq.days), data=m.dmass1.2.yhat.fin) +
+  #geom_ribbon(aes(x=arousal.freq.days, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
+  geom_point(aes(x=mean.torpor.temp, y=d.mass.daily.p, fill=arousal.freq.days), shape=21, size=3,color="black", data=dis.df)+
+  geom_line(size=1.5)+
+  scale_color_gradient(low="Blue", high="Red", name="Arousal Frequency\n(Arousals per Day)", guide = F)+
+  scale_fill_gradient(low="Blue", high="Red", name="Arousal Frequency\n(Arousals per Day)")+
+  labs(x="Mean Torpor Bout\nTemperature (Celsius)", y="Daily Mass Loss (Grams)")+
+  scale_y_continuous(limits=c(0, 0.035))+
+  theme(
+    axis.text = element_text(family="Arial", size=13, color="black"),
+    axis.title = element_text(family="Arial", size=19),
+    axis.ticks = element_line(color="black", linewidth=0.5),
+    plot.margin=margin(10,10,0,30),
+    panel.grid.major = element_line(color="grey89"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill="white", color="black", linewidth=1),
+    legend.title = element_text(angle=90, family="Arial",size=10),
+    legend.text = element_text(family="Arial", size=10),
+    legend.key.width = unit(0.4,'cm'),
+    legend.key.height =  unit(0.7,'cm'),
+    legend.background = element_rect(fill="white", color="black"),
+    legend.key = element_blank(),
+    legend.position = c(0.1,0.78)
+  )+
+  guides(fill=guide_colorbar(title.position = "left"));p.dmass1.3
+#Plot. 
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/mass_loss~arousal_freq*mean_torpor_temp3.PNG",p.dmass1.3,scale=3,width=6,height=4,units="cm",dpi=600)
+
+
+
+
+
+
+
+
+
+# Aroual freq ~ early mass
+m.ar.earlmass <- glmmTMB(arousal.freq.days ~ mass.early+ (1|site), family=Gamma(link="log"), data=dis.df);summary(m.ar.earlmass)
+plot(dis.df$arousal.freq.days ~ dis.df$mass.early)
+#No effect
+m.ar.earlmass <- glmmTMB(arousal.freq.days ~ mass.early*mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.ar.earlmass)
+#No interaction with temp either. 
+
+p.ar.earlmass<- ggplot() +
+  geom_point(aes(x=mass.early, y=arousal.freq.days, fill=site, shape=sex), size=5, alpha=.8, color="black", data=dis.df)+
   scale_shape_manual(values=c(21,24), name="Sex")+
-  labs(x="Arousal Frequency (Arousals per Day)", y="Daily Mass Loss (grams)")+
+  #scale_x_continuous(limits=c(0,0.16))+
+  labs(y="Arousal Frequency (Arousals Per Day)", x="Early Hibernation Mass (grams)")+
+  #scale_y_continuous(limits=c(-0.0015, 0.0005), breaks=c(-0.0015, -0.001,-0.0005,0,0.0005), labels=c("-0.0015", "-0.001","-0.0005","0","0.0005"))+
+  guides(fill = guide_legend(override.aes = list(shape = 21)))+
   theme(
     axis.text = element_text(size=13),
     axis.title = element_text(size=19),
     plot.margin=margin(10,10,0,30),
     legend.title = element_text(size=13),
     legend.text = element_text(size=13)
-  );p.dmass1
-#Plot. 
-#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/mass_loss~arousal_freq*mean_torpor_temp.PNG",p.dmass1,scale=3,width=10,height=6,units="cm",dpi=600)
+  );p.ar.earlmass
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/arousal_freq~early_mass.PNG",p.ar.earlmass,scale=3,width=10,height=6,units="cm",dpi=600)
+
+
 
 
 
@@ -1290,7 +1499,7 @@ p.dmass1 <- ggplot(aes(x=arousal.freq.days, y=model.fit, color=mean.torpor.temp,
 ## Mean torpor temperature
 
 m.dmass3 <- glmmTMB(d.mass.daily.p ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass3)
-plot(dis.df$d.mass.daily.p ~ dis.df$mean.torpor.temp)
+plot(dis.df$d.mass.daily.p ~ dis.df$temp.early)
 #Appears to be no association. 
 
 p.early.mass0<- ggplot() +
@@ -1354,7 +1563,7 @@ m.dmass5 <- glmmTMB(d.mass.daily.p ~ mean.d.torpor.temp.weighted*mean.torpor.tem
 
 m.dmass6 <- glmmTMB(d.mass.daily.p ~ mass.early + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass6)
 plot(allEffects(m.dmass6))
-plot(dis.df$d.mass.daily.p ~ dis.df$mass.early)
+plot(dis.df$mass.early ~ dis.df$temp.early)
 #Clearly there's a positive association between early hibernation body mass and the amount of mass lost. 
 
 m.dmass6.df <- as.data.frame(expand.grid(mass.early=seq(7, 13, 0.01), site=unique(dis.df$site)))
@@ -1388,8 +1597,36 @@ p.dmass6 <- ggplot(aes(x=mass.early, y=model.fit), data=m.dmass6.yhat.fin) +
 
 
 
+
+
+#Mass early ~ temperature early
+m.earl.mass <- glm(mass.early ~ temp.early, family=Gamma(link="log"), data=dis.df);summary(m.earl.mass)
+plot(allEffects(m.earl.mass))
+plot(dis.df$mass.early ~ dis.df$temp.early)
+#Clearly there's a positive association between early hibernation temperature and body mass
+#HOWEVER, if you add a site random effect, this effect disappears (site is strongly confounded with temprature)
+
+m.earl.mass.e <- as.data.frame(Effect(c("temp.early"), m.earl.mass, xlevels=100))
+#Dataframe containing model predictions
+
+p.earl.mass.temp<- ggplot(m.earl.mass.e, aes(x=temp.early, y=fit)) +
+  geom_line()+
+  geom_ribbon(alpha=0.1, aes(ymin=lower, ymax=upper))+
+  geom_point(aes(x=temp.early, y=mass.early, fill=site), size=3, alpha=0.8, shape=21, color="black", data=dis.df)+
+  labs(x="Early Hibernation Temperature", y="Early Mass");p.earl.mass.temp
+#plot
+
+
+
+
+
+
+
+
+
+
 #Early loads
-m.dmass7 <- glmmTMB(d.mass.daily.p ~ lgdL.early.no.neg + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass7)
+m.dmass7 <- glmmTMB(d.mass.daily.p ~ lgdL.early.no.neg*temp.early + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass7)
 plot(allEffects(m.dmass7))
 plot(dis.df$d.mass.daily.p ~ dis.df$lgdL.early.no.neg)
 # That's an association. Interaction with arousal freq or mean torpor temp?
@@ -1401,22 +1638,49 @@ m.dmass7.e <- as.data.frame(Effect(c("lgdL.early.no.neg"),m.dmass7, xlevels=100)
 #Dataframe containing model predictions
 
 
+dis.df$site2<-NA
+#First going to re-name sites for ESA presentation
+dis.df$site2[dis.df$site=="SOUTH LAKE MINE"] <- "Site 1"
+dis.df$site2[dis.df$site=="GRAPHITE MINE"] <- "Site 2"
+dis.df$site2[dis.df$site=="CP TUNNEL"] <- "Site 3"
+dis.df$site2[dis.df$site=="BLACKBALL"] <- "Site 4"
+dis.df$site2[dis.df$site=="ZIMMERMAN"] <- "Site 5"
+dis.df$site2[dis.df$site=="MEAD MINE"] <- "Site 6"
+dis.df$site2[dis.df$site=="ELROY SPARTA"] <- "Site 7"
+
 p.dmass6 <- ggplot(aes(x=lgdL.early.no.neg, y=fit), data=m.dmass7.e) +
+  geom_ribbon(aes(x=lgdL.early.no.neg, ymin=lower, ymax=upper), fill="grey90", color="black")+
+  geom_point(aes(x=lgdL.early.no.neg, y=d.mass.daily.p, fill=site2), size=3, shape=21, color="black", data=dis.df)+
   geom_line()+
-  geom_ribbon(aes(x=lgdL.early.no.neg, ymin=lower, ymax=upper), alpha=0.4, fill="gray", color="black")+
-  geom_point(aes(x=lgdL.early.no.neg, y=d.mass.daily.p, fill=site, shape=sex), size=3, color="black", data=dis.df)+
-  scale_shape_manual(values=c(21,24), name="Sex")+
-  labs(x="Early Hibernation Pathogen Load", y="Daily Mass Loss (grams)")+
+  labs(y="Daily Mass Loss (Grams)", x="Early Hibernation Pathogen Load \n (log-Nanograms of Fungal DNA)")+
   guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  scale_fill_manual(values=c(
+    c(
+      "#47537D",
+      "darkorchid4",
+      "#384726",
+      "darkblue",
+      "#C66A15",
+      "brown",
+      "darkcyan")))+
   theme(
-    axis.text = element_text(size=13),
-    axis.title = element_text(size=19),
+    axis.text = element_text(family="Arial", size=13, color="black"),
+    axis.title = element_text(family="Arial", size=19),
+    axis.ticks = element_line(color="black", linewidth=0.5),
     plot.margin=margin(10,10,0,30),
-    legend.title = element_text(size=13),
-    legend.text = element_text(size=13)
+    panel.grid.major = element_line(color="grey89"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill="white", color="black", linewidth=1),
+    legend.title = element_blank(),
+    legend.text = element_text(family="Arial", size=10),
+    legend.key.size = unit(0.4,'cm'),
+    legend.spacing.y = unit(0,'cm'),
+    legend.background = element_rect(fill="white", color="black"),
+    legend.key = element_blank(),
+    legend.position = c(0.1,0.78)
   );p.dmass6
 #Plot. 
-#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/mass_loss~early_load.PNG",p.dmass6,scale=3,width=10,height=6,units="cm",dpi=600)
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/mass_loss~early_load.PNG",p.dmass6,scale=3,width=6,height=4,units="cm",dpi=600)
 
 
 
@@ -1504,7 +1768,15 @@ plot(dis.df$d.mass.daily.p ~ dis.df$mean.temp.dev.origin.sec)
 # 1) lgdL.early = contains negative samples assigned 40ct cutoff values. 
 # 2) lgdL.early.no.neg = does not contain negative samples assigned 40ct cutoff values. 
 
-
+dis.df$site2<-NA
+#First going to re-name sites for ESA presentation
+dis.df$site2[dis.df$site=="SOUTH LAKE MINE"] <- "Site 1"
+dis.df$site2[dis.df$site=="GRAPHITE MINE"] <- "Site 2"
+dis.df$site2[dis.df$site=="CP TUNNEL"] <- "Site 3"
+dis.df$site2[dis.df$site=="BLACKBALL"] <- "Site 4"
+dis.df$site2[dis.df$site=="ZIMMERMAN"] <- "Site 5"
+dis.df$site2[dis.df$site=="MEAD MINE"] <- "Site 6"
+dis.df$site2[dis.df$site=="ELROY SPARTA"] <- "Site 7"
 
 
 #Arousal frequency: lgdL.early
@@ -1515,8 +1787,10 @@ hist(resid(m1.early.load))
 shapiro.test(resid(m1.early.load))
 #could be some relationship, but the 40ct bats make this data look weird
 
+
+
 #Arousal frequency: lgdL.early.no.neg
-m1.early.load.no.neg <- glmer(arousal.freq.days ~ lgdL.early.no.neg + (1|site), family=Gamma(link="log"), data=dis.df);summary(m1.early.load.no.neg)
+m1.early.load.no.neg <- glmmTMB(arousal.freq.days ~ lgdL.early + (1|site), family=Gamma(link="log"), data=dis.df);summary(m1.early.load.no.neg)
 plot(allEffects(m1.early.load.no.neg))
 hist(resid(m1.early.load.no.neg))
 shapiro.test(resid(m1.early.load.no.neg))
@@ -1530,19 +1804,38 @@ m2.e <- as.data.frame(Effect(c("lgdL.early"), m1.early.load, xlevels=100))
 
 p1.early.load<- ggplot(m2.e, aes(x=lgdL.early, y=fit)) +
   geom_line()+
-  geom_ribbon(alpha=0.1, aes(ymin=lower, ymax=upper))+
-  geom_point(aes(x=lgdL.early, y=arousal.freq.days, fill=site, shape=sex), size=3, color="black", data=dis.df)+
+  geom_ribbon(alpha=0.1, aes(ymin=lower, ymax=upper), color="black")+
+  geom_point(aes(x=lgdL.early, y=arousal.freq.days, fill=site2), size=3, shape=21, color="black", data=dis.df)+
   scale_shape_manual(values=c(21,24), name="Sex")+
-  labs(x="Early Hibernation Pathogen Load", y="Arousal Frequency (Arousals per Day)")+
+  labs(x="Early Hibernation Pathogen Load\n(log-Nanograms of Fungal DNA)", y="Arousal Frequency\n(Arousals per Day)")+
   guides(fill = guide_legend(override.aes = list(shape = 21)))+
+  scale_x_continuous(limits=c(-6,0))+
+  scale_fill_manual(values=c(
+    c(
+      "#47537D",
+      "darkorchid4",
+      "#384726",
+      "darkblue",
+      "#C66A15",
+      "brown",
+      "darkcyan")))+
   theme(
-    axis.text = element_text(size=13),
-    axis.title = element_text(size=19),
+    axis.text = element_text(family="Arial", size=13, color="black"),
+    axis.title = element_text(family="Arial", size=19),
+    axis.ticks = element_line(color="black", linewidth=0.5),
     plot.margin=margin(10,10,0,30),
-    legend.title = element_text(size=13),
-    legend.text = element_text(size=13)
+    panel.grid.major = element_line(color="grey89"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill="white", color="black", linewidth=1),
+    legend.title = element_blank(),
+    legend.text = element_text(family="Arial", size=10),
+    legend.key.size = unit(0.4,'cm'),
+    legend.spacing.y = unit(0,'cm'),
+    legend.background = element_rect(fill="white", color="black"),
+    legend.key = element_blank(),
+    legend.position = c(0.1,0.78)
   );p1.early.load
-#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/arousal_freq~early_load.PNG",p1.early.load,scale=3,width=8,height=4,units="cm",dpi=600)
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/arousal_freq~early_load.PNG",p1.early.load,scale=3,width=6,height=4,units="cm",dpi=600)
 
 #Here's the same plot but without the 40ct bats:
 p1.early.load.no.neg<- ggplot() +
@@ -1559,6 +1852,65 @@ p1.early.load.no.neg<- ggplot() +
   );p1.early.load.no.neg
 
 #ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/arousal_freq~early_load_no_neg.PNG",p1.early.load.no.neg,scale=3,width=8,height=4,units="cm",dpi=600)
+
+
+
+
+
+
+# Early temperature:
+c1 <- (min(dis.df$lgdL.early.no.neg, na.rm=T)-0.0001)*-1
+dis.df$lgdL.early.no.neg.pos <- dis.df$lgdL.early.no.neg + c1
+m.early.load.temp <- glm(lgdL.early.no.neg.pos ~ temp.early, family=Gamma(link='log'), data=dis.df);summary(m.early.load.temp)
+plot(allEffects(m.early.load.temp))
+plot(dis.df$lgdL.early.no.neg.pos ~ dis.df$temp.early)
+m.early.load.temp.e <- as.data.frame(Effect(c("temp.early"), m.early.load.temp, xlevels=1000)) 
+m.early.load.temp.e$fit <- m.early.load.temp.e$fit - c1
+m.early.load.temp.e$lower <- m.early.load.temp.e$lower - c1
+m.early.load.temp.e$upper <- m.early.load.temp.e$upper - c1
+#Dataframe containing model predictions, corrected for the added constant
+
+p2.early.load.no.neg<- ggplot(m.early.load.temp.e, aes(x=temp.early, y=fit)) +
+  geom_ribbon(aes(ymin=lower, ymax=upper),  fill="grey90", color="black")+
+  geom_point(aes(x=temp.early, y=lgdL.early.no.neg, fill=site2), size=3, shape=21, color="black", data=dis.df)+
+  geom_line()+
+  labs(x=expression("Eary Hibernation Roosting Temperature " ( degree~C)), y="Early Hibernation Pathogen Load\n(log-Nanograms of Fungal DNA)")+
+  scale_x_continuous(limits=c(3,10), breaks=c(3,5,7,9))+
+  scale_y_continuous(limits=c(-7.5,0))+
+  scale_fill_manual(values=c(
+    c(
+      "#47537D",
+      "darkorchid4",
+      "#384726",
+      "darkblue",
+      "#C66A15",
+      "brown",
+      "darkcyan")))+
+  theme(
+    axis.text = element_text(family="Arial", size=13, color="black"),
+    axis.title = element_text(family="Arial", size=19),
+    axis.ticks = element_line(color="black", linewidth=0.5),
+    plot.margin=margin(10,10,0,30),
+    panel.grid.major = element_line(color="grey89"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill="white", color="black", linewidth=1),
+    legend.title = element_blank(),
+    legend.text = element_text(family="Arial", size=10),
+    legend.key.size = unit(0.4,'cm'),
+    legend.spacing.y = unit(0,'cm'),
+    legend.background = element_rect(fill="white", color="black"),
+    legend.key = element_blank(),
+    legend.position = c(0.1,0.78)
+  );p2.early.load.no.neg
+
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/early_load~early_temp.PNG",p2.early.load.no.neg,scale=3,width=6,height=4,units="cm",dpi=600)
+
+
+
+
+
+
+
 
 
 
@@ -1670,7 +2022,7 @@ plot(dis.df$lgdL.early.no.neg ~ dis.df$mean.temp.dev.origin.sec)
 
 
 #Arousal frequency
-m1.late.load <- glmmTMB(arousal.freq.days ~ lgdL.late + (1|site),family=Gamma(link="log"),data=dis.df);summary(m1.late.load)
+m1.late.load <- lmer(lgdL.late ~ arousal.freq.days*temp.early + (1|site),data=dis.df);summary(m1.late.load)
 plot(allEffects(m1.late.load))
 plot(dis.df$arousal.freq.days ~ dis.df$lgdL.late)
 hist(resid(m1.late.load))
@@ -1678,7 +2030,7 @@ shapiro.test(resid(m1.late.load))
 #looks like nothing
 
 #Without 40ct bats:
-m1.late.load.no.neg <- glmmTMB(arousal.freq.days ~ lgdL.late.no.neg + (1|site),family=Gamma(link="log"),data=dis.df);summary(m1.late.load.no.neg)
+m1.late.load.no.neg <- glmmTMB(lgdL.late.no.neg ~ arousal.freq.days*temp.early + (1|site),data=dis.df);summary(m1.late.load.no.neg)
 plot(allEffects(m1.late.load.no.neg))
 plot(dis.df$arousal.freq.days ~ dis.df$lgdL.late.no.neg)
 #Nothing
@@ -1808,7 +2160,7 @@ dis.df$d.lgdL.no.neg.daily.pos <- dis.df$d.lgdL.no.neg.daily + d.lgdL.daily.no.n
 
 
 #Arousal frequency
-m1.growth.load <- glmmTMB(d.lgdL.daily.pos ~ arousal.freq.days + (1|site),family=Gamma(link="log"), data=dis.df);summary(m1.growth.load)
+m1.growth.load <- glmmTMB(d.lgdL.daily.pos ~ arousal.freq.days*mean.torpor.temp+ (1|site),family=Gamma(link="log"), data=dis.df);summary(m1.growth.load)
 plot(allEffects(m1.growth.load))
 plot(dis.df$d.lgdL.daily.pos ~ dis.df$arousal.freq.days)
 #looks like nothing
@@ -1868,9 +2220,9 @@ p0.growth.load<- ggplot() +
 
 
 #Without the 40ct bats:
-m2.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m2.growth.load.no.neg)
+m2.growth.load.no.neg <- glmmTMB(d.lgdL.no.neg.daily.pos ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df[dis.df$site!='MEAD MINE',]);summary(m2.growth.load.no.neg)
 plot(allEffects(m2.growth.load.no.neg))
-plot(dis.df$d.lgdL.no.neg.daily.pos ~ dis.df$mean.torpor.temp)
+plot(dis.df$d.lgdL.no.neg.daily.pos[dis.df] ~ dis.df$mean.torpor.temp)
 #Appears to be no association. 
 
 
