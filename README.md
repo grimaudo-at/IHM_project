@@ -213,3 +213,17 @@ The r estimates that Kate provided me from her initial pass at the logistic grow
 # 8/17/2023
 
 Today, I primarily worked on writing the pathogen growth equation. In the new pathogen growth script, I also build a simple linear model for the pathogen's r values under 11 Celsius. I've also written a section that visualizes the raw pathogen growth data from the lab growth trials. Finally, I wrote code that begins to extend each of the iButton datasets to the late hibernation sampling date, as most of them stopped logging at some point prior to that date. To fill that empty dataspace with temperature data, I am just going to populate it with the bat's roosting temperature on the last day of recording. 
+
+# 8/22/2023
+Today, I finished constructing the dataframe I will use to run the model on. In the ind_path_growth_models_nicholes_data.R script, the new dataframe object is called t.dat.full, because it contains temperature data for each day of the **full** hibernation period between sampling events. Again, for all the transmitters with missing temperature data at the end of hibernation, their missing values were populated with the *last recorded* mean daily temperature. 
+
+I also began constructing the model as defined below:
+
+dP/dt = rP - uP
+Where r = mT + b ; u = cT + d ; T = average daily iButton temperature
+  -> dP/dt = (r - u)P
+  -> dP/dt = ((mT + b) - (cT + d))P
+Thus, P(t) = P(0)exp(((mT + b) - (cT + d))*t)
+Or, P(t+1) = P(0)exp((mT + b) - (cT + d))
+
+Feeding some guesstimates to the paramaters c and d yields fairly realistic results. However, if I remove the pathogen decay term and just model this as un-restrained pathogen growth, the calculated late hibernation loads are astronomically high, like 10 on the log scale. Not sure why this is happening, but something is being messed up when applying the r values Kate derived. **It's not an issue with how the model is written in the for-loop, because I manually verified the calculations were correct between timesteps. I think what's happening is that the r value is somehow scaled incorrectly?**
