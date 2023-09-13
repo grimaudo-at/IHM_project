@@ -15,9 +15,14 @@ dat$start.datetime <- as.POSIXct(strptime(dat$start.datetime, "%Y-%m-%d %H:%M:%S
 dat$end.datetime <- as.POSIXct(strptime(dat$end.datetime, "%Y-%m-%d %H:%M:%S",tz='EST'))
 #Formatting date correctly
 
-dat$event.length.days[dat$event.length.days == 0] <- NA
-#There are several instances where there is an extremely short bout of "torpor", for less that the sampling interval of the logger.
-#These need to be NA when calculating change in torpor bout temperature independent variables
+trans_meta<- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/transmitter_metadata.csv")
+dat$logger_model <- trans_meta$model[match(dat$trans_id, trans_meta$id)]
+dat$event.length.days[dat$event.length.days == 0 & dat$logger_model == "DS1922L"] <- 0.5/24
+dat$event.length.days[dat$event.length.days == 0 & dat$logger_model == "DS1921G"] <- 1/24
+#There are several instances where there is an extremely short bout of torpor or arousal, where the logger only recorded a single
+#datapoint during the event. For those transmitters that are DS1922L's, I am going to assign them a value of 30 minutes for
+#event length (half the logging interaval) and for DS1921G's, I am going to assign 1 hour for the event length (half their
+#logging interval). 
 
 #### Building independent variables of interest #####
 
@@ -151,11 +156,11 @@ ind.summ$mean.torpor.temp <- dat$mean.torpor.temp[match(ind.summ$trans_id, dat$t
 dat$d.mean.torpor.temp <- NA
 #This is the column in which I'll store the change in temperature data. 
 
-for(i in 3:nrow(dat)) {if(dat[i,3] == "Arousal") {dat[i,15] <- NA}
-  else{if(dat[i,2] != dat[i-1,2]) {dat[i,15] <- NA}
-    else{if(dat[i,2] != dat[i-2,2]) {dat[i,15] <- NA}
-      else{if(is.na(dat[i-2,12])=="TRUE") {dat[i,15] <- NA}
-        else{dat[i,15] <- dat[i,7] - dat[i-2,7]}}
+for(i in 3:nrow(dat)) {if(dat[i,3] == "Arousal") {dat[i,16] <- NA}
+  else{if(dat[i,2] != dat[i-1,2]) {dat[i,16] <- NA}
+    else{if(dat[i,2] != dat[i-2,2]) {dat[i,16] <- NA}
+      else{if(is.na(dat[i-2,12])=="TRUE") {dat[i,16] <- NA}
+        else{dat[i,16] <- dat[i,7] - dat[i-2,7]}}
       }
     }
   }
@@ -326,7 +331,14 @@ avg.nov.torpor.temps <- raw.trans.data %>%
 ind.summ$mean.torpor.temp.nov <- avg.nov.torpor.temps$mean.nov.temp[match(ind.summ$trans_id, avg.nov.torpor.temps$trans_id)]
 #matching it in. 
 
-
+#Finally, I want a mean arousal bout length and mean maximum temperature during arousals:
+arousal.summs <- dat %>%
+  filter(behavior=="Arousal") %>%
+  group_by(trans_id) %>%
+  summarise(mean.arousal.length = mean(event.length.days), mean.max.arousal.temp = mean(max.temp))
+ind.summ$mean.arousal.length.days <- arousal.summs$mean.arousal.length[match(ind.summ$trans_id, arousal.summs$trans_id)]
+ind.summ$mean.max.arousal.temp <- arousal.summs$mean.max.arousal.temp[match(ind.summ$trans_id, arousal.summs$trans_id)]
+#Matching into ind.summ
 
 
 #### Matching in disease data ####
@@ -484,7 +496,7 @@ dis.df$d.lgdL.no.neg.daily = dis.df$d.lgdL.no.neg/dis.df$days.between.samples
 #This is the pathogen growth rate corrected for sampling interval, without the 40ct bats. 
 
 ## Can now match in all the transmitter summary data for each individual: 
-dis.df <- left_join(dis.df, ind.summ[,2:15], by="trans_id")
+dis.df <- left_join(dis.df, ind.summ[,2:17], by="trans_id")
 #Merged. 
 
 
@@ -798,6 +810,67 @@ mean.temp.dev.origin.sec.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.temp.de
 #Plotted
 
 #ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/daily_deviation_origin_section.PNG",mean.temp.dev.origin.sec.site.p,scale=3,width=8,height=8,units="cm",dpi=600)
+
+
+
+#Now looking at mean arousal bout length
+
+mean.arousal.length.m <- glm(mean.arousal.length.days ~ site, family=Gamma(link='log'), data=dis.df);summary(mean.arousal.length.m)
+
+mean.arousal.length.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.arousal.length.mean = mean(mean.arousal.length.days, na.rm=T), mean.arousal.length.days.sd = sd(mean.arousal.length.days, na.rm=T)) %>%
+  mutate(hi.sd = mean.arousal.length.mean + mean.arousal.length.days.sd, lo.sd = mean.arousal.length.mean - mean.arousal.length.days.sd)
+#Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
+
+mean.arousal.length.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.arousal.length.mean ), data=mean.arousal.length.summ) +
+                                                 geom_jitter(aes(x=site, y=mean.arousal.length.days, color=mean.torpor.temp), data=dis.df, size=2.5, height=0, width=0.15) +
+                                                 geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+                                                 geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+                                                 scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+                                                 labs(x=NULL, y="Mean Arousal Bout Length (days)") +
+                                                 theme(
+                                                   axis.text.y = element_text(size=13),
+                                                   axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+                                                   axis.title = element_text(size=15),
+                                                   plot.margin=margin(10,10,0,30),
+                                                   legend.title = element_text(size=13),
+                                                   legend.text = element_text(size=13),
+                                                   legend.position = "top"
+                                                 )), type="histogram", fill="darkgray", bins=15); mean.arousal.length.site.p
+#Plotted
+
+
+
+
+#Now looking at mean maximum arousal bout temperature
+
+mean.arousal.max.temp.m <- lm(mean.max.arousal.temp ~ site, data=dis.df);summary(mean.arousal.max.temp.m)
+
+mean.arousal.max.temp.summ <- dis.df %>%
+  group_by(site) %>%
+  summarise(mean.arousal.max.temp.mean = mean(mean.max.arousal.temp, na.rm=T), mean.arousal.max.temp.sd = sd(mean.max.arousal.temp, na.rm=T)) %>%
+  mutate(hi.sd = mean.arousal.max.temp.mean + mean.arousal.max.temp.sd, lo.sd = mean.arousal.max.temp.mean - mean.arousal.max.temp.sd)
+#Summary table of deviation in torpor bout temperature from first torpor bout data across sites. Mean and SD range. 
+
+mean.arousal.max.temp.site.p <- ggMarginal((ggplot(aes(x=site, y=mean.arousal.max.temp.mean), data=mean.arousal.max.temp.summ) +
+                                            geom_jitter(aes(x=site, y=mean.max.arousal.temp, color=mean.torpor.temp), data=dis.df, size=2.5, height=0, width=0.15) +
+                                            geom_errorbar(aes(ymin=lo.sd, ymax=hi.sd), width=0.2, size=0.7) +
+                                            geom_point(size=4, color="Black", fill="White", stroke=1, shape=22)+
+                                            scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature")+
+                                            labs(x=NULL, y="Mean Maximum Temperature \n During Arousal Bout") +
+                                            theme(
+                                              axis.text.y = element_text(size=13),
+                                              axis.text.x = element_text(size=13, angle=70, vjust=1.05, hjust=1.05),
+                                              axis.title = element_text(size=15),
+                                              plot.margin=margin(10,10,0,30),
+                                              legend.title = element_text(size=13),
+                                              legend.text = element_text(size=13),
+                                              legend.position = "top"
+                                            )), type="histogram", fill="darkgray", bins=15); mean.arousal.max.temp.site.p
+#Plotted
+
+
 
 
 
@@ -1461,6 +1534,55 @@ p.dmass1.3 <- ggplot(aes(x=mean.torpor.temp, y=model.fit, color=arousal.freq.day
 
 
 
+## Arousal frequency * Arousal length
+
+m.dmass1.4 <- glmmTMB(d.mass.daily.p ~ arousal.freq.days*mean.arousal.length.days + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass1.4)
+#random effect of site. 
+plot(allEffects(m.dmass1.4))
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.arousal.length.days)
+#Pretty clear negative positive relationship between arousal bout length and the amount of mass lost. 
+#In other words, if you woke up and stayed awake longer, you lost more mass. 
+
+
+m.dmass1.4.df <- as.data.frame(expand.grid(mean.arousal.length.days=c(0.05,0.1,0.15,0.2), arousal.freq.days=seq(0.04, 0.16, 0.001),  site=unique(dis.df$site)))
+m.dmass1.yhat <- as.data.frame(predict(m.dmass1, m.dmass1.df, se.fit=T, re.form=NA, type='response'))
+m.dmass1.yhat.fin <- cbind(m.dmass1.df, m.dmass1.yhat)
+m.dmass1.yhat.fin <- m.dmass1.yhat.fin %>%
+  group_by(arousal.freq.days, mean.torpor.temp) %>%
+  summarise(model.fit = mean(fit), model.se = mean(se.fit)) %>%
+  mutate(lo.ci = model.fit-(1.96*model.se), hi.ci = model.fit + (1.96*model.se))
+#This dataframe contains model predictions and 95% confidence intervals. 
+
+
+p.dmass1 <- ggplot(aes(x=arousal.freq.days, y=model.fit, color=mean.torpor.temp, group=mean.torpor.temp), data=m.dmass1.yhat.fin) +
+  #geom_ribbon(aes(x=arousal.freq.days, ymin=lo.ci, ymax=hi.ci), fill="gray", color="black")+
+  geom_point(aes(x=arousal.freq.days, y=d.mass.daily.p, fill=mean.torpor.temp), shape=21, size=3,color="black", data=dis.df)+
+  geom_line(size=1.5)+
+  scale_color_gradient(low="Blue", high="Red", name="Mean Torpor Bout Temperature", guide = F)+
+  scale_fill_gradient(low="Blue", high="Red", name="Mean Torpor Bout\nTemperature (Celsius)")+
+  labs(x="Arousal Frequency\n(Arousals per Day)", y="Daily Mass Loss (Grams)")+
+  scale_x_continuous(limits=c(0.03,0.17))+
+  theme(
+    axis.text = element_text(family="Arial", size=13, color="black"),
+    axis.title = element_text(family="Arial", size=19),
+    axis.ticks = element_line(color="black", linewidth=0.5),
+    plot.margin=margin(10,10,0,30),
+    panel.grid.major = element_line(color="grey89"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill="white", color="black", linewidth=1),
+    legend.title = element_text(angle=90, family="Arial",size=10),
+    legend.text = element_text(family="Arial", size=10),
+    legend.key.width = unit(0.4,'cm'),
+    legend.key.height =  unit(0.7,'cm'),
+    legend.background = element_rect(fill="white", color="black"),
+    legend.key = element_blank(),
+    legend.position = c(0.1,0.78)
+  )+
+  guides(fill=guide_colorbar(title.position = "left"));p.dmass1
+#Plot. 
+#ggsave(file="/Users/alexg8/Dropbox/Grimaudo_WNS_Project/figs/IHM Project/Exploratory/For ESA 2023/mass_loss~arousal_freq*mean_torpor_temp.PNG",p.dmass1,scale=3,width=6,height=4,units="cm",dpi=600)
+
+
 
 
 
@@ -1499,7 +1621,7 @@ p.ar.earlmass<- ggplot() +
 ## Mean torpor temperature
 
 m.dmass3 <- glmmTMB(d.mass.daily.p ~ mean.torpor.temp + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.dmass3)
-plot(dis.df$d.mass.daily.p ~ dis.df$temp.early)
+plot(dis.df$d.mass.daily.p ~ dis.df$mean.torpor.temp)
 #Appears to be no association. 
 
 p.early.mass0<- ggplot() +
@@ -1600,7 +1722,7 @@ p.dmass6 <- ggplot(aes(x=mass.early, y=model.fit), data=m.dmass6.yhat.fin) +
 
 
 #Mass early ~ temperature early
-m.earl.mass <- glm(mass.early ~ temp.early, family=Gamma(link="log"), data=dis.df);summary(m.earl.mass)
+m.earl.mass <- glmmTMB(mass.early ~ temp.early + (1|site), family=Gamma(link="log"), data=dis.df);summary(m.earl.mass)
 plot(allEffects(m.earl.mass))
 plot(dis.df$mass.early ~ dis.df$temp.early)
 #Clearly there's a positive association between early hibernation temperature and body mass

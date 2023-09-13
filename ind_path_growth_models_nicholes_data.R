@@ -69,15 +69,17 @@ t.dat <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/t
 
 i.dat.all <- read.csv("/Users/alexg8/Dropbox/Grimaudo_WNS_Project/Data/IHM Project/inf_data_5JUN2023.csv") %>%
   mutate(date = as.Date(date, format="%m/%d/%y"))
+i.dat.all$mean_gdL[i.dat.all$mean_gdL == 0] <- 10^((40-22.04942)/-3.34789)
+i.dat.all$lgdL <- log10(i.dat.all$mean_gdL)
 #This dataframe contains all infection data from transmitter bats, both early and late sampling events. 
-
-i.dat <- i.dat.all %>% 
-  # mutate(gdL.c = mean_gdL + 10^((40-22.04942)/-3.34789)) %>%
-  filter(season=="hiber_earl")
-i.dat$mean_gdL[i.dat$mean_gdL == 0] <- 10^((40-22.04942)/-3.34789)
-#This contains only the early hibernation data. 
 #For all bats without detectable infection in early hibernation, the 40ct value was assigned. 
 #If we haven't received swab sample data back yet, then this value is left as NA. 
+
+i.dat <- filter(i.dat.all, season=="hiber_earl")
+#This contains only the early hibernation data. 
+i.dat.late <- filter(i.dat.all, season=="hiber_late") #Infection data only from late hibernation
+#Late hibernation infection data. 
+
 
 t.dat.fst <- t.dat %>%
   group_by(site, trans_id) %>%
@@ -166,19 +168,76 @@ tp.lines <- ggplot()+
 #Applying model to empty iButton dataframe, t.dat.full.lmodel:
 t.dat.full.lmodel.growth.decay <- t.dat.full #Duplicating t.dat.full dataframe
 for(i in 2:nrow(t.dat.full.lmodel.growth.decay)) {if(is.na(t.dat.full.lmodel.growth.decay[i,5])=="TRUE") #running model
-  {t.dat.full.lmodel.growth.decay[i,5] <- (t.dat.full.lmodel.growth.decay[i-1,5])*exp(((m * t.dat.full.lmodel.growth.decay[i-1,4]) + b) - ((c*t.dat.full.lmodel.growth.decay[i-1,4])+d))}}
+  {t.dat.full.lmodel.growth.decay[i,5] <- (t.dat.full.lmodel.growth.decay[i-1,5])*exp(((m * t.dat.full.lmodel.growth.decay[i-1,4]) + b) - ((c*t.dat.full.lmodel.growth.decay[i-1,4])+d))}} #(t.dat.full.lmodel.growth.decay[i-1,5])*exp((((m * t.dat.full.lmodel.growth.decay[i-1,4]) + b) - ((c*t.dat.full.lmodel.growth.decay[i-1,4])+d))/5)}}
 
 #Plot of each bat's loads over time:
 p1<- ggplot(aes(x=date, y=log10(gdL), color=site), data=t.dat.full.lmodel.growth.decay) +
   geom_line()+
-  facet_wrap(facets = "trans_id");p1
+  facet_wrap(facets = "trans_id", scales='free');p1
+
+#Let's plot density plots of these late hibernation loads and d.lgdL values against measured values.
+
+#Need to construct a dataframe from model output:
+end.loads.growth.decay <- t.dat.full.lmodel.growth.decay %>%
+  group_by(trans_id) %>%
+  filter(date==max(date, na.rm=T)) %>%
+  mutate(lgdL.late = log10(gdL), data="Model Output") 
+#Final loads predicted by the model. 
+end.loads.growth.decay$lgdL.early <- i.dat$lgdL[match(end.loads.growth.decay$trans_id, i.dat$trans_id)]
+#Bringin in early lgdL to calculate change in loads. 
+end.loads.growth.decay$date.early <- i.dat$date[match(end.loads.growth.decay$trans_id, i.dat$trans_id)]
+#Bringing in fall sampling date to calculate sampling time and daily pathogen growth
+end.loads.growth.decay$sampling.length <- end.loads.growth.decay$date - end.loads.growth.decay$date.early
+#Length of sampling interval
+end.loads.growth.decay$d.lgdL <- end.loads.growth.decay$lgdL.late - end.loads.growth.decay$lgdL.early
+#Over-winter change in pathogen loads
+end.loads.growth.decay$d.lgdL.daily <- end.loads.growth.decay$d.lgdL/as.numeric(end.loads.growth.decay$sampling.length)
+#Daily over-winter change in pathogen loads
+end.loads.growth.decay <- select(end.loads.growth.decay, trans_id, site, data, lgdL.late, d.lgdL, d.lgdL.daily)
+#Reducing dataframe to minimum columns
+
+#And now another dataframe constructed from empirical data only:
+i.dat$lgdL.late <- i.dat.late$lgdL[match(i.dat$trans_id, i.dat.late$trans_id)]
+#Bringing late hibernation load data to early hibernation dataframe
+i.dat$date.late <- i.dat.late$date[match(i.dat$trans_id, i.dat.late$trans_id)]
+#Bringing late hibernation date data to early hibernation dataframe
+i.dat$sampling.length <- i.dat$date.late - i.dat$date
+#Length of sampling period
+i.dat$d.lgdL <- i.dat$lgdL.late - i.dat$lgdL
+#Over-winter change in pathogen load
+i.dat$d.lgdL.daily <- i.dat$d.lgdL/as.numeric(i.dat$sampling.length)
+#Daily over-winter change in pathogen load
+i.dat.red <- select(i.dat, trans_id, site, lgdL.late, d.lgdL, d.lgdL.daily)
+i.dat.red <- filter(i.dat.red, !is.na(d.lgdL.daily) & d.lgdL.daily != 0)
+#Reducing dataframe
+i.dat.red$data <- "qPCR"
+#Data type column for merging
+i.dat.red$trans_id <- as.factor(i.dat.red$trans_id)
+#Needs to be a factor for merging
+
+end.loads.growth.decay2 <- rbind(end.loads.growth.decay, i.dat.red)
+#Dataframe for plotting
+
+
+#end.loads.growth.decay.density <- ggplot(aes(x=lgdL), data=end.loads.growth.decay) +
+ # geom_density(fill="blue", alpha=0.6)+
+  #geom_density(aes(x=lgdL), fill="red", alpha=0.6, data=i.dat.all[i.dat.all$season=="hiber_late",])+
+  #scale_fill_discrete(labels=c("Model Output", "qPCR Values"));end.loads.growth.decay.density
+
+
+
+
+
+
+
+
 
 #I also want a model using just the pathogen growth term, without the decay term, to compare outputs:
 t.dat.full.lmodel.growth.only <- t.dat.full #Duplicating dataframe
 for(i in 2:nrow(t.dat.full.lmodel.growth.only)) {if(is.na(t.dat.full.lmodel.growth.only[i,5])=="TRUE") #running model
-{t.dat.full.lmodel.growth.only[i,5] <- (t.dat.full.lmodel.growth.only[i-1,5])*exp(((m * t.dat.full.lmodel.growth.only[i-1,4]) + b))}}
+{t.dat.full.lmodel.growth.only[i,5] <- (t.dat.full.lmodel.growth.only[i-1,5])*exp((m * t.dat.full.lmodel.growth.only[i-1,4]) + b)}} # (t.dat.full.lmodel.growth.only[i-1,5])*exp(((m * t.dat.full.lmodel.growth.only[i-1,4]) + b)/5)}}
 
-p2<- ggplot(aes(x=date, y=log10(gdL), color=site), data=t.dat.full.lmodel.growth.only[t.dat.full.lmodel.growth.only$site=="GRAPHITE MINE",]) +
+p2<- ggplot(aes(x=date, y=log10(gdL), color=site), data=t.dat.full.lmodel.growth.only) +
   geom_line()+
   facet_wrap(facets = "trans_id");p2
 
